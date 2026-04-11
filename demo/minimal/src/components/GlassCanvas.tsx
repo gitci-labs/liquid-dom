@@ -164,6 +164,7 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
   let edgeMask = smoothstep(34.0, 0.0, abs(distance));
   let interiorMask = smoothstep(8.0, 92.0, -distance);
   let normalEdgeMask = smoothstep(globals.controls.w, 0.0, abs(distance));
+  let sdfBoundaryMask = 1.0 - smoothstep(0.0, 1.2, abs(distance));
 
   let gradient = sdfGradient(fragCoord);
   let bevelInfluence = normalEdgeMask * 1.35;
@@ -217,6 +218,9 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
 
   let grain = (hash21(fragCoord) - 0.5) * 0.015;
   color = color + grain;
+  if (globals.pointer.w > 0.5) {
+    color = mix(color, vec3f(1.0, 0.24, 0.18), sdfBoundaryMask);
+  }
   color = pow(max(color, vec3f(0.0)), vec3f(0.95));
 
   return vec4f(color, 1.0);
@@ -260,6 +264,7 @@ type RenderControls = {
   motion: number
   lightAzimuth: number
   lightAltitude: number
+  showSdfBoundary: boolean
   showLight: boolean
   lightFollowsPointer: boolean
   debugView: 'final' | 'displacement' | 'normal'
@@ -282,8 +287,9 @@ function createDefaultControls(): RenderControls {
     motion: 1,
     lightAzimuth: -148,
     lightAltitude: 54,
+    showSdfBoundary: false,
     showLight: false,
-    lightFollowsPointer: true,
+    lightFollowsPointer: false,
     debugView: 'final',
     shapes: [
       {
@@ -523,7 +529,7 @@ export function GlassCanvas() {
         globals[8] = pointerRef.current.x
         globals[9] = pointerRef.current.y
         globals[10] = 0
-        globals[11] = 0
+        globals[11] = currentControls.showSdfBoundary ? 1 : 0
 
         globals[12] = resolvedLight.direction.x
         globals[13] = resolvedLight.direction.y
@@ -646,6 +652,14 @@ export function GlassCanvas() {
     setCopyStatus('')
   }
 
+  function handleSdfBoundaryToggle() {
+    setControls((current) => ({
+      ...current,
+      showSdfBoundary: !current.showSdfBoundary,
+    }))
+    setCopyStatus('')
+  }
+
   function handleLightOverlayToggle() {
     setControls((current) => ({
       ...current,
@@ -764,6 +778,17 @@ export function GlassCanvas() {
 
         <section className="glass-stage__group">
           <h3>Debug view</h3>
+          <button
+            type="button"
+            className={
+              controls.showSdfBoundary
+                ? 'glass-stage__toggle glass-stage__toggle--active'
+                : 'glass-stage__toggle'
+            }
+            onClick={handleSdfBoundaryToggle}
+          >
+            {controls.showSdfBoundary ? 'Hide SDF boundary' : 'Show SDF boundary'}
+          </button>
           <div className="glass-stage__segmented" role="tablist" aria-label="Debug view">
             {DEBUG_VIEW_OPTIONS.map((option) => (
               <button
