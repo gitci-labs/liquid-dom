@@ -189,16 +189,11 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
   var glass = mix(refracted, blurred, frostMix);
   glass = mix(glass, vec3f(0.93, 0.96, 1.0), 0.12 + 0.08 * interiorMask);
 
-  let fresnel = pow(clamp(1.0 - dot(normal, viewDir), 0.0, 1.0), 9.0);
-  let fresnelEdgeBand = 1.0 - smoothstep(0.0, 6.0, abs(distance));
   let specular = pow(max(dot(normal, halfVector), 0.0), 96.0);
-  let innerLine = smoothstep(2.8, 0.2, abs(distance + 9.0));
 
   let borderHue = 0.5 + 0.5 * gradient.x;
   let prismaticBorder = mix(vec3f(0.48, 0.88, 0.96), vec3f(1.0, 0.73, 0.9), borderHue);
   let borderLight = vec3f(1.0) * specular * (0.45 + 0.55 * edgeMask);
-  let fresnelLight = mix(vec3f(0.96, 0.98, 1.0), prismaticBorder, 0.28) * fresnel * fresnelEdgeBand * 1.35;
-  let contour = vec3f(0.2, 0.24, 0.31) * innerLine * 0.22;
 
   let shadow = vec3f(0.0, 0.03, 0.08) * smoothstep(22.0, 0.0, distance - 1.0) * 0.16;
 
@@ -213,7 +208,7 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
   var color = background - shadow;
   if (fillMask > 0.0) {
     color = mix(color, glass, fillMask);
-    color = color + fresnelLight + borderLight + contour;
+    color = color + borderLight;
   }
 
   let grain = (hash21(fragCoord) - 0.5) * 0.015;
