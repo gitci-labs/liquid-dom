@@ -810,9 +810,9 @@ export function GlassCanvas() {
         writeShapes(device, shapesBuffer, targetCanvas.width, targetCanvas.height, elapsedSeconds, currentControls)
 
         globals[4] = currentControls.unionSoftness
-        globals[5] = currentControls.distortion / currentDpr
+        globals[5] = currentControls.distortion * currentDpr
         globals[6] = currentControls.blur
-        globals[7] = currentControls.normalEdgeWidth / currentDpr
+        globals[7] = currentControls.normalEdgeWidth * currentDpr
 
         globals[8] = pointerRef.current.x
         globals[9] = pointerRef.current.y
@@ -830,23 +830,23 @@ export function GlassCanvas() {
               : 0
 
         globals[16] = currentControls.primarySpecularStrength
-        globals[17] = currentControls.primarySpecularWidth / currentDpr
+        globals[17] = currentControls.primarySpecularWidth * currentDpr
         globals[18] = currentControls.primarySpecularSharpness
         globals[19] = currentControls.primarySpecularTint
 
         globals[20] = currentControls.secondarySpecularStrength
-        globals[21] = currentControls.secondarySpecularWidth / currentDpr
+        globals[21] = currentControls.secondarySpecularWidth * currentDpr
         globals[22] = currentControls.secondarySpecularSharpness
         globals[23] = currentControls.secondarySpecularTint
 
         device.queue.writeBuffer(globalsBuffer, 0, globals)
         blurHorizontalParams[0] = 1
         blurHorizontalParams[1] = 0
-        blurHorizontalParams[2] = currentControls.blur / currentDpr
+        blurHorizontalParams[2] = currentControls.blur * currentDpr
         blurHorizontalParams[3] = 0
         blurVerticalParams[0] = 0
         blurVerticalParams[1] = 1
-        blurVerticalParams[2] = currentControls.blur / currentDpr
+        blurVerticalParams[2] = currentControls.blur * currentDpr
         blurVerticalParams[3] = 0
         device.queue.writeBuffer(blurHorizontalBuffer, 0, blurHorizontalParams)
         device.queue.writeBuffer(blurVerticalBuffer, 0, blurVerticalParams)
