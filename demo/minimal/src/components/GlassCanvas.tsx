@@ -1164,7 +1164,6 @@ export function GlassCanvas() {
     min,
     max,
     step,
-    description,
     onChange,
     precision = 2,
   }: {
@@ -1173,7 +1172,6 @@ export function GlassCanvas() {
     min: number
     max: number
     step: number
-    description: string
     onChange: (value: number) => void
     precision?: number
   }) {
@@ -1191,7 +1189,6 @@ export function GlassCanvas() {
           value={value}
           onChange={(event) => onChange(Number(event.target.value))}
         />
-        <span className="glass-stage__slider-copy">{description}</span>
       </label>
     )
   }
@@ -1237,17 +1234,6 @@ export function GlassCanvas() {
         </div>
       ) : null}
       <aside className="glass-stage__controls">
-        <div className="glass-stage__controls-copy">
-          <p className="glass-stage__eyebrow">WebGPU SDF Controls</p>
-          <h2>Shape, fusion, frost, and light</h2>
-          <p className="glass-stage__description">
-            Geometry sliders move and size the rounded-rectangle SDF primitives. Fusion softens the smooth union
-            between them. Optics shapes the glass bezel profile, refractive displacement, and frosted blur sampled
-            from the procedural background. Lighting uses azimuth and altitude angles to drive the rim-only
-            specular response.
-          </p>
-        </div>
-
         <div className="glass-stage__toolbar">
           <button type="button" className="glass-stage__button" onClick={handleCopySettings}>
             Copy settings
@@ -1287,10 +1273,6 @@ export function GlassCanvas() {
               </button>
             ))}
           </div>
-          <p className="glass-stage__debug-copy">
-            Displacement shows the actual refractive displacement field derived from the bezel height profile.
-            Normal shows the rim normal map used for the narrow specular highlight.
-          </p>
         </section>
 
         <section className="glass-stage__group">
@@ -1302,7 +1284,6 @@ export function GlassCanvas() {
             max: 96,
             step: 0.5,
             precision: 1,
-            description: 'Smooth-union radius used when multiple SDF shapes fuse together.',
             onChange: (value) => updateControl('unionSoftness', value),
           })}
           <div className="glass-stage__segmented" role="tablist" aria-label="Displacement profile">
@@ -1328,7 +1309,6 @@ export function GlassCanvas() {
             max: 240,
             step: 0.25,
             precision: 2,
-            description: 'Width of the curved refracting bezel measured inward from the boundary.',
             onChange: (value) => updateControl('bezelWidth', value),
           })}
           {renderSlider({
@@ -1338,7 +1318,6 @@ export function GlassCanvas() {
             max: 24,
             step: 0.25,
             precision: 2,
-            description: 'Blur radius used for the soft glass interior.',
             onChange: (value) => updateControl('blur', value),
           })}
           {renderSlider({
@@ -1348,7 +1327,6 @@ export function GlassCanvas() {
             max: 200,
             step: 0.25,
             precision: 2,
-            description: 'Base glass thickness added to the bezel height profile before computing refraction.',
             onChange: (value) => updateControl('glassThickness', value),
           })}
           {renderSlider({
@@ -1358,7 +1336,6 @@ export function GlassCanvas() {
             max: 24,
             step: 0.25,
             precision: 2,
-            description: 'Multiplier applied to the physically derived lateral displacement through the glass.',
             onChange: (value) => updateControl('displacementScale', value),
           })}
           {renderSlider({
@@ -1368,7 +1345,6 @@ export function GlassCanvas() {
             max: 2.2,
             step: 0.01,
             precision: 2,
-            description: 'Refractive index of the glass. Air is fixed at 1.0.',
             onChange: (value) => updateControl('glassRefractiveIndex', value),
           })}
           {renderSlider({
@@ -1378,7 +1354,6 @@ export function GlassCanvas() {
             max: 1.5,
             step: 0.05,
             precision: 2,
-            description: 'Scales the subtle live shape drift that keeps the union breathing.',
             onChange: (value) => updateControl('motion', value),
           })}
         </section>
@@ -1414,7 +1389,6 @@ export function GlassCanvas() {
             max: 180,
             step: 1,
             precision: 0,
-            description: 'Horizontal angle around the viewport plane. 0 faces right, -90 points upward.',
             onChange: (value) => updateControl('lightAzimuth', value),
           })}
           {renderSlider({
@@ -1424,7 +1398,6 @@ export function GlassCanvas() {
             max: 85,
             step: 1,
             precision: 0,
-            description: 'Elevation above the surface plane. Higher values aim the light more toward the viewer.',
             onChange: (value) => updateControl('lightAltitude', value),
           })}
         </section>
@@ -1438,7 +1411,6 @@ export function GlassCanvas() {
             max: 2,
             step: 0.05,
             precision: 2,
-            description: 'Intensity of the outer highlight lobe.',
             onChange: (value) => updateControl('specularStrength', value),
           })}
           {renderSlider({
@@ -1448,7 +1420,6 @@ export function GlassCanvas() {
             max: 40,
             step: 0.25,
             precision: 2,
-            description: 'How wide the outer highlight can spread away from the SDF boundary.',
             onChange: (value) => updateControl('specularWidth', value),
           })}
           {renderSlider({
@@ -1458,7 +1429,6 @@ export function GlassCanvas() {
             max: 89.5,
             step: 0.5,
             precision: 1,
-            description: 'Maximum tilt angle of the rim normal at the boundary. 0 keeps the rim flat; 90 approaches perpendicular to the glass face.',
             onChange: (value) => updateControl('rimAngle', value),
           })}
           {renderSlider({
@@ -1468,7 +1438,6 @@ export function GlassCanvas() {
             max: 192,
             step: 1,
             precision: 0,
-            description: 'Specular exponent for the outer lobe. Higher values make it tighter.',
             onChange: (value) => updateControl('specularSharpness', value),
           })}
           {renderSlider({
@@ -1478,7 +1447,6 @@ export function GlassCanvas() {
             max: 1,
             step: 0.01,
             precision: 2,
-            description: 'Blend from white to the prismatic border tint on the outer lobe.',
             onChange: (value) => updateControl('specularTint', value),
           })}
         </section>
@@ -1493,7 +1461,6 @@ export function GlassCanvas() {
               max: 0.95,
               step: 0.005,
               precision: 3,
-              description: 'Horizontal position as a fraction of viewport width.',
               onChange: (value) => updateShape(index, 'centerX', value),
             })}
             {renderSlider({
@@ -1503,7 +1470,6 @@ export function GlassCanvas() {
               max: 0.95,
               step: 0.005,
               precision: 3,
-              description: 'Vertical position as a fraction of viewport height.',
               onChange: (value) => updateShape(index, 'centerY', value),
             })}
             {renderSlider({
@@ -1513,7 +1479,6 @@ export function GlassCanvas() {
               max: 0.32,
               step: 0.005,
               precision: 3,
-              description: 'Half-width of the rounded rectangle, scaled from viewport width.',
               onChange: (value) => updateShape(index, 'halfWidth', value),
             })}
             {renderSlider({
@@ -1523,7 +1488,6 @@ export function GlassCanvas() {
               max: 0.32,
               step: 0.005,
               precision: 3,
-              description: 'Half-height of the rounded rectangle, scaled from viewport height.',
               onChange: (value) => updateShape(index, 'halfHeight', value),
             })}
             {renderSlider({
@@ -1533,7 +1497,6 @@ export function GlassCanvas() {
               max: 0.22,
               step: 0.005,
               precision: 3,
-              description: 'Radius of the rounded corners, scaled from the smaller viewport dimension.',
               onChange: (value) => updateShape(index, 'radius', value),
             })}
           </section>
