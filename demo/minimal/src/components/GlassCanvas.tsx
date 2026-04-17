@@ -274,6 +274,8 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
   let surfaceHeight = baseHeight + select(profileHeight, flatHeight, inwardDistance > bezelWidth);
   let surfaceDerivative = select(profileResult.y, 0.0, inwardDistance > bezelWidth);
   let clampedSlope = min(surfaceDerivative, tan(1.4835298));
+  // Build a beveled surface normal from the SDF gradient plus the chosen height profile,
+  // then refract the view ray per channel to get the displaced background lookup.
   let surfaceNormal = normalize(vec3f(gradient * clampedSlope, 1.0));
   let chromaticAberration = max(globals.glass.w, 0.0);
   let baseIor = max(globals.glass.z, 1.0001);
@@ -323,13 +325,28 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
   );
   let normalDebug = vec3f(rimNormal * 0.5 + vec2f(0.5), 0.5);
 
+  // The colored edge component starts from the refracted blur and can be overdriven via
+  // saturation. A second sample is taken farther out along the rim normal to fake reflection.
   let glassTint = vec3f(globals.specularSecondary.z);
   let sampledSpecularColor = blurred;
+  let reflectedSpecularUv = in.uv + rimNormal * globals.specularSecondary.y / globals.canvas.xy;
+  let reflectedSpecularColor = sampleBackgroundBlurred(reflectedSpecularUv);
   let glass = mix(blurred, glassTint, globals.specularSecondary.w);
   let sampledSpecularLuma = dot(sampledSpecularColor, vec3f(0.2126, 0.7152, 0.0722));
+  let reflectedSpecularLuma = dot(reflectedSpecularColor, vec3f(0.2126, 0.7152, 0.0722));
   let sampledSpecularBase = vec3f(sampledSpecularLuma);
+  let reflectedSpecularBase = vec3f(reflectedSpecularLuma);
   let sampledSpecularTint = mix(sampledSpecularBase, sampledSpecularColor, 1.0 + globals.specularSecondary.x);
+  let reflectedSpecularTint = mix(reflectedSpecularBase, reflectedSpecularColor, 1.0 + globals.profile.y);
+  // Reflection only shows when the reflected sample is bright enough and the refracted sample
+  // underneath is dark enough to accept it.
+  let reflectionPresence = smoothstep(0.2, 0.85, reflectedSpecularLuma);
+  let refractionAcceptance = 1.0 - smoothstep(0.35, 0.85, sampledSpecularLuma);
+  let reflectionBlend = reflectionPresence * refractionAcceptance;
+  let edgeSpecularColor = mix(sampledSpecularTint, reflectedSpecularTint, reflectionBlend);
 
+  // White specular is a separate rim-only highlight driven by 2D normal/light alignment and
+  // then masked back to the configured rim band.
   let rimSpecular = pow(max(dot(rimNormal, lightDir), 0.0), globals.specularPrimary.z);
   let mirroredRimSpecular = pow(max(dot(rimNormal, mirroredLightDir), 0.0), globals.specularPrimary.z);
   let specularOpacity = clamp((rimSpecular + mirroredRimSpecular) * globals.specularPrimary.x, 0.0, 1.0);
@@ -348,7 +365,7 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
   var color = background;
   if (fillMask > 0.0) {
     color = mix(color, glass, fillMask);
-    color = mix(color, sampledSpecularTint, sampledBorderOpacity);
+    color = mix(color, edgeSpecularColor, sampledBorderOpacity);
     color = color + borderLight;
   }
 
@@ -401,6 +418,8 @@ type RenderControls = {
   specularSharpness: number
   specularOpacity: number
   specularColorSaturation: number
+  specularReflectionDistance: number
+  specularReflectionSaturation: number
   glassTintBrightness: number
   glassTintOpacity: number
   showSdfBoundary: boolean
@@ -440,7 +459,9 @@ function createDefaultControls(): RenderControls {
     specularWidth: 0.3,
     specularSharpness: 2,
     specularOpacity: 0.15,
-    specularColorSaturation: 2,
+    specularColorSaturation: 1.7,
+    specularReflectionDistance: 18,
+    specularReflectionSaturation: 0.7,
     glassTintBrightness: 0.15,
     glassTintOpacity: 0.7,
     showSdfBoundary: false,
@@ -840,12 +861,12 @@ export function GlassCanvas() {
         globals[19] = currentControls.specularOpacity
 
         globals[20] = currentControls.specularColorSaturation
-        globals[21] = 0
+        globals[21] = currentControls.specularReflectionDistance * currentDpr
         globals[22] = currentControls.glassTintBrightness
         globals[23] = currentControls.glassTintOpacity
 
         globals[24] = displacementProfileIndex
-        globals[25] = 0
+        globals[25] = currentControls.specularReflectionSaturation
         globals[26] = 0
         globals[27] = 0
 
@@ -1401,6 +1422,24 @@ export function GlassCanvas() {
             step: 0.01,
             precision: 2,
             onChange: (value) => updateControl('specularColorSaturation', value),
+          })}
+          {renderSlider({
+            label: 'Reflection distance',
+            value: controls.specularReflectionDistance,
+            min: 0,
+            max: 128,
+            step: 1,
+            precision: 0,
+            onChange: (value) => updateControl('specularReflectionDistance', value),
+          })}
+          {renderSlider({
+            label: 'Reflection saturation',
+            value: controls.specularReflectionSaturation,
+            min: 0,
+            max: 5,
+            step: 0.01,
+            precision: 2,
+            onChange: (value) => updateControl('specularReflectionSaturation', value),
           })}
         </section>
 
