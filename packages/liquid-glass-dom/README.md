@@ -1,6 +1,6 @@
-# liquid-glass-canvas
+# liquid-glass-dom
 
-`liquid-glass-canvas` is an imperative WebGPU renderer for layered liquid-glass effects.
+`liquid-glass-dom` is an imperative WebGPU renderer for layered liquid-glass effects.
 
 It exposes a small scene graph API:
 
@@ -15,7 +15,7 @@ The package is WebGPU-only and assumes the experimental html-in-canvas APIs used
 ## Installation
 
 ```bash
-pnpm add liquid-glass-canvas
+pnpm add liquid-glass-dom
 ```
 
 ## Exports
@@ -31,7 +31,7 @@ import {
   type RgbaColor,
   type SurfaceProfile,
   type Transform,
-} from 'liquid-glass-canvas'
+} from 'liquid-glass-dom'
 ```
 
 ## Quick Start
@@ -42,7 +42,7 @@ import {
   Container,
   Renderer,
   Scene,
-} from 'liquid-glass-canvas'
+} from 'liquid-glass-dom'
 
 const scene = new Scene()
 

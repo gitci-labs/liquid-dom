@@ -8,7 +8,7 @@ export function EditorBackdrop() {
     <div className="editor-backdrop">
       <section className="editor-backdrop__hero">
         <div>
-          <p className="editor-backdrop__eyebrow">liquid-glass-canvas</p>
+          <p className="editor-backdrop__eyebrow">liquid-glass-dom</p>
           <h1>Scene Graph Editor</h1>
           <p className="editor-backdrop__lede">
             Build nested groups, layered containers, and stylized glass shapes with the imperative

@@ -8,7 +8,7 @@ import {
   Scene,
   type Point,
   type SurfaceProfile,
-} from 'liquid-glass-canvas'
+} from 'liquid-glass-dom'
 import { EditorBackdrop } from './EditorBackdrop'
 
 type TintColor = {
