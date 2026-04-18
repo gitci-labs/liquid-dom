@@ -1,7 +1,7 @@
-import heroImage from '../../../minimal/src/assets/hero.png'
-import backgroundImage from '../../../minimal/src/assets/background.jpg'
-import backgroundTwoImage from '../../../minimal/src/assets/background2.jpg'
-import backgroundThreeImage from '../../../minimal/src/assets/background3.jpg'
+import heroImage from '../assets/hero.png'
+import backgroundImage from '../assets/background.jpg'
+import backgroundTwoImage from '../assets/background2.jpg'
+import backgroundThreeImage from '../assets/background3.jpg'
 
 export function EditorBackdrop() {
   return (
