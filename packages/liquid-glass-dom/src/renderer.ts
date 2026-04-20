@@ -6,7 +6,7 @@ import {
   scaleOutputMatrix,
   type Matrix2D,
 } from './matrix'
-import { Container, flattenContainers, Scene } from './scene'
+import { Container, flattenContainers, Glass, Scene } from './scene'
 import { BLUR_SHADER, GLASS_SHADER, METRICS_SHADER, PRESENT_SHADER } from './shaders'
 import type { BackdropMetrics, SurfaceProfile } from './types'
 
@@ -27,6 +27,7 @@ const GPU_TEXTURE_USAGE = {
 const BACKDROP_METRICS_SIZE = 32
 const BACKDROP_METRICS_BYTES_PER_ROW = 256
 const BACKDROP_METRICS_BUFFER_SIZE = BACKDROP_METRICS_BYTES_PER_ROW * BACKDROP_METRICS_SIZE
+const CONTENT_ATLAS_PADDING = 1
 
 type HTMLCanvasElementWithSubtree = HTMLCanvasElement & {
   requestPaint?: () => void
@@ -37,8 +38,12 @@ type GPUQueueWithElementCopy = GPUQueue & {
     source: Element,
     width: number,
     height: number,
-    destination: { texture: GPUTexture },
+    destination: { texture: GPUTexture; origin?: { x: number; y: number; z?: number } },
   ) => void
+}
+
+type CanvasPaintEvent = Event & {
+  changedElements?: readonly Element[]
 }
 
 /**
@@ -69,6 +74,37 @@ type BoundsRect = {
 type PackedShapesResult = {
   shapeCount: number
   bounds: BoundsRect | null
+}
+
+type GlassContentEntry = {
+  glass: Glass
+  host: HTMLDivElement
+  contentVersion: number
+  width: number
+  height: number
+  deviceWidth: number
+  deviceHeight: number
+  atlasX: number
+  atlasY: number
+  atlasWidth: number
+  atlasHeight: number
+  contentU: number
+  contentV: number
+  contentScaleU: number
+  contentScaleV: number
+}
+
+type ContentLayoutRect = {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+type ContentAtlasLayout = {
+  width: number
+  height: number
+  rects: Map<Glass, ContentLayoutRect>
 }
 
 type BackdropMetricsState = {
@@ -186,6 +222,75 @@ function percentile(values: number[], p: number) {
   return values[lower] + (values[upper] - values[lower]) * blend
 }
 
+function nextPowerOfTwo(value: number) {
+  let next = 1
+  while (next < value) {
+    next *= 2
+  }
+  return next
+}
+
+function tryPackContentAtlas(entries: GlassContentEntry[], atlasWidth: number) {
+  const rects = new Map<Glass, ContentLayoutRect>()
+  let cursorX = 0
+  let cursorY = 0
+  let rowHeight = 0
+
+  for (const entry of entries) {
+    const rectWidth = entry.deviceWidth + CONTENT_ATLAS_PADDING * 2
+    const rectHeight = entry.deviceHeight + CONTENT_ATLAS_PADDING * 2
+
+    if (rectWidth > atlasWidth) {
+      return null
+    }
+
+    if (cursorX > 0 && cursorX + rectWidth > atlasWidth) {
+      cursorX = 0
+      cursorY += rowHeight
+      rowHeight = 0
+    }
+
+    rects.set(entry.glass, {
+      x: cursorX,
+      y: cursorY,
+      width: rectWidth,
+      height: rectHeight,
+    })
+
+    cursorX += rectWidth
+    rowHeight = Math.max(rowHeight, rectHeight)
+  }
+
+  return {
+    width: atlasWidth,
+    height: cursorY + rowHeight,
+    rects,
+  }
+}
+
+function packContentAtlas(entries: GlassContentEntry[], maxTextureSize: number): ContentAtlasLayout {
+  if (entries.length === 0) {
+    throw new Error('Cannot build a glass content atlas without any content entries.')
+  }
+
+  let maxEntryWidth = 1
+  for (const entry of entries) {
+    maxEntryWidth = Math.max(maxEntryWidth, entry.deviceWidth + CONTENT_ATLAS_PADDING * 2)
+  }
+
+  let atlasWidth = nextPowerOfTwo(maxEntryWidth)
+  while (atlasWidth <= maxTextureSize) {
+    const layout = tryPackContentAtlas(entries, atlasWidth)
+    if (layout && layout.height <= maxTextureSize) {
+      return layout
+    }
+
+    atlasWidth *= 2
+  }
+
+  throw new Error('Glass content atlas exceeds the maximum supported texture size.')
+}
+
 function parseBackdropMetrics(buffer: GPUBuffer): BackdropMetrics | null {
   const bytes = new Uint8Array(buffer.getMappedRange())
   const luminances: number[] = []
@@ -259,12 +364,17 @@ export class Renderer {
   private readonly backdropMetricsStateByContainer = new WeakMap<Container, BackdropMetricsState>()
   private readonly trackedBackdropContainers = new Set<Container>()
   private readonly pendingBackdropMetricStates = new Set<BackdropMetricsState>()
+  private readonly glassContentEntries = new Map<Glass, GlassContentEntry>()
+  private readonly glassContentHosts = new Set<HTMLDivElement>()
 
   private initPromise: Promise<void> | null = null
   private initError: unknown = null
   private destroyed = false
   private initialized = false
   private backgroundReady = false
+  private contentReady = true
+  private needsBackgroundCopy = true
+  private needsContentCopy = false
   private pendingRender = false
   private currentDpr = 1
   private resizeObserver: ResizeObserver | null = null
@@ -285,14 +395,36 @@ export class Renderer {
   private presentPipeline: GPURenderPipeline | null = null
   private targets: RenderTargetSet | null = null
   private backdropMetricsTarget: GPUTexture | null = null
+  private emptyContentTexture: GPUTexture | null = null
+  private glassContentAtlas: GPUTexture | null = null
+  private glassContentAtlasWidth = 0
+  private glassContentAtlasHeight = 0
 
-  private readonly handlePaintEvent = () => {
+  private readonly handlePaintEvent = (event: Event) => {
     if (this.destroyed || !this.device || !this.targets) {
       return
     }
 
-    this.copyBackgroundElement()
-    this.backgroundReady = true
+    const changedElements = (event as CanvasPaintEvent).changedElements
+    const hasChangedElements = Array.isArray(changedElements)
+    const shouldCopyBackground =
+      this.needsBackgroundCopy ||
+      !hasChangedElements ||
+      changedElements.includes(this.htmlRoot)
+    const shouldCopyContent =
+      this.needsContentCopy ||
+      !hasChangedElements ||
+      changedElements.some((element) => element instanceof HTMLDivElement && this.glassContentHosts.has(element))
+
+    if (shouldCopyBackground) {
+      this.copyBackgroundElement()
+      this.backgroundReady = true
+      this.needsBackgroundCopy = false
+    }
+
+    if (shouldCopyContent) {
+      this.copyGlassContentAtlas()
+    }
 
     if (this.pendingRender) {
       this.drawFrame()
@@ -406,6 +538,12 @@ export class Renderer {
     this.targets = null
     this.backdropMetricsTarget?.destroy()
     this.backdropMetricsTarget = null
+    this.glassContentAtlas?.destroy()
+    this.glassContentAtlas = null
+    this.glassContentAtlasWidth = 0
+    this.glassContentAtlasHeight = 0
+    this.emptyContentTexture?.destroy()
+    this.emptyContentTexture = null
     this.globalsBuffer?.destroy()
     this.shapesBuffer?.destroy()
     this.blurHorizontalBuffer?.destroy()
@@ -429,6 +567,12 @@ export class Renderer {
     for (const state of this.pendingBackdropMetricStates) {
       state.cleanupAfterPending = true
     }
+
+    for (const entry of this.glassContentEntries.values()) {
+      entry.host.remove()
+    }
+    this.glassContentEntries.clear()
+    this.glassContentHosts.clear()
   }
 
   private async initialize() {
@@ -550,6 +694,26 @@ export class Renderer {
       usage: GPU_TEXTURE_USAGE.RENDER_ATTACHMENT | GPU_TEXTURE_USAGE.COPY_SRC,
     })
 
+    const emptyContentTexture = device.createTexture({
+      size: {
+        width: 1,
+        height: 1,
+        depthOrArrayLayers: 1,
+      },
+      format: presentationFormat,
+      usage: GPU_TEXTURE_USAGE.TEXTURE_BINDING | GPU_TEXTURE_USAGE.COPY_DST,
+    })
+    device.queue.writeTexture(
+      { texture: emptyContentTexture },
+      new Uint8Array([0, 0, 0, 0]),
+      { bytesPerRow: 4 },
+      {
+        width: 1,
+        height: 1,
+        depthOrArrayLayers: 1,
+      },
+    )
+
     this.device = device
     this.context = context
     this.presentationFormat = presentationFormat
@@ -563,6 +727,7 @@ export class Renderer {
     this.backdropMetricsPipeline = backdropMetricsPipeline
     this.presentPipeline = presentPipeline
     this.backdropMetricsTarget = backdropMetricsTarget
+    this.emptyContentTexture = emptyContentTexture
     this.initialized = true
 
     for (const container of this.trackedBackdropContainers) {
@@ -609,6 +774,9 @@ export class Renderer {
         sceneB: createRenderTarget(this.device, this.presentationFormat, nextWidth, nextHeight),
       }
       this.backgroundReady = false
+      this.contentReady = this.glassContentEntries.size === 0
+      this.needsBackgroundCopy = true
+      this.needsContentCopy = this.glassContentEntries.size > 0
       this.targetCanvas.requestPaint?.()
     }
 
@@ -631,7 +799,7 @@ export class Renderer {
 
     this.shapesBuffer?.destroy()
     this.shapesBuffer = this.device.createBuffer({
-      size: nextCapacity * 16 * Float32Array.BYTES_PER_ELEMENT,
+      size: nextCapacity * 20 * Float32Array.BYTES_PER_ELEMENT,
       usage: GPU_BUFFER_USAGE.STORAGE | GPU_BUFFER_USAGE.COPY_DST,
     })
     this.shapeCapacity = nextCapacity
@@ -738,6 +906,213 @@ export class Renderer {
     )
   }
 
+  private createGlassContentHost() {
+    const host = document.createElement('div')
+    host.style.position = 'absolute'
+    host.style.left = '0'
+    host.style.top = '0'
+    host.style.display = 'block'
+    host.style.overflow = 'hidden'
+    host.style.contain = 'paint'
+    host.style.pointerEvents = 'none'
+    this.targetCanvas.prepend(host)
+    this.glassContentHosts.add(host)
+    return host
+  }
+
+  private removeGlassContentEntry(glass: Glass) {
+    const entry = this.glassContentEntries.get(glass)
+    if (!entry) {
+      return
+    }
+
+    entry.host.remove()
+    this.glassContentHosts.delete(entry.host)
+    this.glassContentEntries.delete(glass)
+  }
+
+  private syncGlassContent(containers: ReturnType<typeof flattenContainers>) {
+    if (!this.device) {
+      return false
+    }
+
+    const activeGlasses = new Set<Glass>()
+    const activeEntries: GlassContentEntry[] = []
+    let layoutChanged = false
+    let contentChanged = false
+
+    for (const entry of containers) {
+      for (const glass of entry.container._children) {
+        const content = glass.content
+        if (!content || glass.width <= 0 || glass.height <= 0) {
+          continue
+        }
+
+        activeGlasses.add(glass)
+
+        let contentEntry = this.glassContentEntries.get(glass)
+        if (!contentEntry) {
+          contentEntry = {
+            glass,
+            host: this.createGlassContentHost(),
+            contentVersion: -1,
+            width: -1,
+            height: -1,
+            deviceWidth: 0,
+            deviceHeight: 0,
+            atlasX: 0,
+            atlasY: 0,
+            atlasWidth: 0,
+            atlasHeight: 0,
+            contentU: 0,
+            contentV: 0,
+            contentScaleU: 0,
+            contentScaleV: 0,
+          }
+          this.glassContentEntries.set(glass, contentEntry)
+          layoutChanged = true
+          contentChanged = true
+        }
+
+        if (contentEntry.contentVersion !== glass._contentVersion || content.parentElement !== contentEntry.host) {
+          contentEntry.host.replaceChildren()
+          contentEntry.host.append(content)
+          contentEntry.contentVersion = glass._contentVersion
+          contentChanged = true
+        }
+
+        const nextDeviceWidth = Math.max(1, Math.round(glass.width * this.currentDpr))
+        const nextDeviceHeight = Math.max(1, Math.round(glass.height * this.currentDpr))
+        if (
+          contentEntry.width !== glass.width ||
+          contentEntry.height !== glass.height ||
+          contentEntry.deviceWidth !== nextDeviceWidth ||
+          contentEntry.deviceHeight !== nextDeviceHeight
+        ) {
+          contentEntry.width = glass.width
+          contentEntry.height = glass.height
+          contentEntry.deviceWidth = nextDeviceWidth
+          contentEntry.deviceHeight = nextDeviceHeight
+          contentEntry.host.style.width = `${glass.width}px`
+          contentEntry.host.style.height = `${glass.height}px`
+          layoutChanged = true
+          contentChanged = true
+        }
+
+        activeEntries.push(contentEntry)
+      }
+    }
+
+    for (const glass of this.glassContentEntries.keys()) {
+      if (!activeGlasses.has(glass)) {
+        this.removeGlassContentEntry(glass)
+        layoutChanged = true
+        contentChanged = true
+      }
+    }
+
+    if (activeEntries.length === 0) {
+      this.glassContentAtlas?.destroy()
+      this.glassContentAtlas = null
+      this.glassContentAtlasWidth = 0
+      this.glassContentAtlasHeight = 0
+      this.contentReady = true
+      this.needsContentCopy = false
+      return true
+    }
+
+    if (layoutChanged) {
+      const layout = packContentAtlas(activeEntries, this.device.limits.maxTextureDimension2D)
+      const nextAtlasWidth = Math.max(layout.width, 1)
+      const nextAtlasHeight = Math.max(layout.height, 1)
+      const rebuildAtlas =
+        !this.glassContentAtlas ||
+        nextAtlasWidth !== this.glassContentAtlasWidth ||
+        nextAtlasHeight !== this.glassContentAtlasHeight
+
+      if (
+        rebuildAtlas ||
+        activeEntries.some(
+          (entry) =>
+            entry.atlasWidth !== nextAtlasWidth ||
+            entry.atlasHeight !== nextAtlasHeight ||
+            !layout.rects.has(entry.glass),
+        )
+      ) {
+        this.glassContentAtlas?.destroy()
+        this.glassContentAtlas = this.device.createTexture({
+          size: {
+            width: nextAtlasWidth,
+            height: nextAtlasHeight,
+            depthOrArrayLayers: 1,
+          },
+          format: this.presentationFormat ?? 'bgra8unorm',
+          usage:
+            GPU_TEXTURE_USAGE.TEXTURE_BINDING |
+            GPU_TEXTURE_USAGE.COPY_DST |
+            GPU_TEXTURE_USAGE.RENDER_ATTACHMENT,
+        })
+        this.glassContentAtlasWidth = nextAtlasWidth
+        this.glassContentAtlasHeight = nextAtlasHeight
+      }
+
+      for (const entry of activeEntries) {
+        const rect = layout.rects.get(entry.glass)
+        if (!rect) {
+          continue
+        }
+
+        entry.atlasX = rect.x
+        entry.atlasY = rect.y
+        entry.atlasWidth = nextAtlasWidth
+        entry.atlasHeight = nextAtlasHeight
+        entry.contentU = (rect.x + CONTENT_ATLAS_PADDING) / nextAtlasWidth
+        entry.contentV = (rect.y + CONTENT_ATLAS_PADDING) / nextAtlasHeight
+        entry.contentScaleU = entry.deviceWidth / nextAtlasWidth
+        entry.contentScaleV = entry.deviceHeight / nextAtlasHeight
+      }
+
+      this.contentReady = false
+      this.needsContentCopy = true
+    } else if (contentChanged) {
+      this.contentReady = false
+      this.needsContentCopy = true
+    }
+
+    if (this.needsContentCopy) {
+      this.targetCanvas.requestPaint?.()
+    }
+
+    return this.contentReady
+  }
+
+  private copyGlassContentAtlas() {
+    if (!this.device || !this.glassContentAtlas || this.glassContentEntries.size === 0) {
+      this.contentReady = true
+      this.needsContentCopy = false
+      return
+    }
+
+    for (const entry of this.glassContentEntries.values()) {
+      ;(this.device.queue as GPUQueueWithElementCopy).copyElementImageToTexture(
+        entry.host,
+        entry.deviceWidth,
+        entry.deviceHeight,
+        {
+          texture: this.glassContentAtlas,
+          origin: {
+            x: entry.atlasX + CONTENT_ATLAS_PADDING,
+            y: entry.atlasY + CONTENT_ATLAS_PADDING,
+            z: 0,
+          },
+        },
+      )
+    }
+
+    this.contentReady = true
+    this.needsContentCopy = false
+  }
+
   private writeGlobals(container: Container, shapeCount: number) {
     if (!this.device || !this.globalsBuffer) {
       return
@@ -765,7 +1140,7 @@ export class Renderer {
     this.globals[12] = Math.sin(container.lightDirection)
     this.globals[13] = -Math.cos(container.lightDirection)
     this.globals[14] = container.specularFalloff
-    this.globals[15] = 0
+    this.globals[15] = container.contentIor
 
     this.globals[16] = container.specularStrength
     this.globals[17] = container.specularWidth * dpr
@@ -774,7 +1149,7 @@ export class Renderer {
 
     this.globals[20] = container.oppositeSpecularStrength
     this.globals[21] = container.reflectionOffset * dpr
-    this.globals[22] = 0
+    this.globals[22] = container.contentDepth * dpr
     this.globals[23] = shapeCount
 
     this.globals[24] = container.tint.r
@@ -824,7 +1199,7 @@ export class Renderer {
 
   private packShapes(container: Container, containerTransform: Matrix2D): PackedShapesResult {
     const dpr = this.currentDpr
-    const packed = new Float32Array(Math.max(container._children.length, 1) * 16)
+    const packed = new Float32Array(Math.max(container._children.length, 1) * 20)
     const bounds = createEmptyBounds()
     let activeCount = 0
 
@@ -845,7 +1220,8 @@ export class Renderer {
       expandBounds(bounds, bottomLeft.x, bottomLeft.y)
       expandBounds(bounds, bottomRight.x, bottomRight.y)
 
-      const offset = activeCount * 16
+      const offset = activeCount * 20
+      const contentEntry = this.glassContentEntries.get(glass)
       const halfWidth = glass.width * 0.5
       const halfHeight = glass.height * 0.5
       packed[offset + 0] = inverse.a
@@ -867,6 +1243,11 @@ export class Renderer {
       packed[offset + 13] = 0
       packed[offset + 14] = 0
       packed[offset + 15] = 0
+
+      packed[offset + 16] = contentEntry?.contentU ?? 0
+      packed[offset + 17] = contentEntry?.contentV ?? 0
+      packed[offset + 18] = contentEntry?.contentScaleU ?? 0
+      packed[offset + 19] = contentEntry?.contentScaleV ?? 0
 
       activeCount += 1
     }
@@ -1034,6 +1415,11 @@ export class Renderer {
       return
     }
 
+    const contentTexture = this.glassContentAtlas ?? this.emptyContentTexture
+    if (!contentTexture) {
+      return
+    }
+
     const bindGroup = this.device.createBindGroup({
       layout: this.glassPipeline.getBindGroupLayout(0),
       entries: [
@@ -1042,6 +1428,7 @@ export class Renderer {
         { binding: 2, resource: this.sampler },
         { binding: 3, resource: sharpSource.createView() },
         { binding: 4, resource: this.targets.blur.createView() },
+        { binding: 5, resource: contentTexture.createView() },
       ],
     })
 
@@ -1104,7 +1491,7 @@ export class Renderer {
     }
 
     this.syncCanvasSize()
-    if (!this.targets || !this.backgroundReady) {
+    if (!this.targets) {
       this.targetCanvas.requestPaint?.()
       return
     }
@@ -1112,6 +1499,13 @@ export class Renderer {
     const containers = flattenContainers(this.scene).sort(
       (left, right) => left.container.zIndex - right.container.zIndex || left.traversalIndex - right.traversalIndex,
     )
+    const contentReady = this.syncGlassContent(containers)
+
+    if (!this.backgroundReady || !contentReady) {
+      this.targetCanvas.requestPaint?.()
+      return
+    }
+
     const seenContainers = new Set<Container>()
 
     let currentScene = this.targets.background

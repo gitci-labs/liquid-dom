@@ -9,6 +9,7 @@ export type GlassInit = Partial<Transform> & {
   height?: number
   cornerRadius?: number
   cornerTransitionSpeed?: number
+  content?: HTMLElement | null
 }
 
 /**
@@ -21,6 +22,8 @@ export type ContainerInit = Partial<Transform> & {
   thickness?: number
   displacementFactor?: number
   ior?: number
+  contentIor?: number
+  contentDepth?: number
   dispersion?: number
   surfaceProfile?: SurfaceProfile
   lightDirection?: number
@@ -143,6 +146,8 @@ export class Glass implements Transform {
   /** Controls the blend from squircle-like corners toward circular corners. */
   cornerTransitionSpeed = 120
 
+  private _content: HTMLElement | null = null
+  _contentVersion = 0
   _parent: Container | null = null
 
   /**
@@ -163,6 +168,9 @@ export class Glass implements Transform {
     if (options.cornerTransitionSpeed !== undefined) {
       this.cornerTransitionSpeed = options.cornerTransitionSpeed
     }
+    if (options.content !== undefined) {
+      this.setContent(options.content)
+    }
   }
 
   /**
@@ -170,6 +178,32 @@ export class Glass implements Transform {
    */
   remove() {
     removeFromParent(this)
+  }
+
+  /**
+   * The optional DOM element rendered inside this glass.
+   */
+  get content() {
+    return this._content
+  }
+
+  /**
+   * Assigns a DOM element to be rendered inside this glass.
+   */
+  setContent(element: HTMLElement | null) {
+    if (this._content === element) {
+      return
+    }
+
+    this._content = element
+    this._contentVersion += 1
+  }
+
+  /**
+   * Removes the DOM element rendered inside this glass, if any.
+   */
+  clearContent() {
+    this.setContent(null)
   }
 }
 
@@ -202,6 +236,13 @@ export class Container implements Transform {
   displacementFactor = 1
   /** Refractive index used for the displacement model. */
   ior = 1.5
+  /** Refractive index used when refracting DOM content rendered inside the glass. */
+  contentIor = 1
+  /**
+   * Content-only refraction depth in CSS pixels.
+   * This is used instead of {@link thickness} when calculating DOM-content refraction.
+   */
+  contentDepth = 0
   /** Strength of RGB channel separation applied to refraction. */
   dispersion = 0
   /** Surface profile used for the beveled edge. */
@@ -253,6 +294,12 @@ export class Container implements Transform {
     }
     if (options.ior !== undefined) {
       this.ior = options.ior
+    }
+    if (options.contentIor !== undefined) {
+      this.contentIor = options.contentIor
+    }
+    if (options.contentDepth !== undefined) {
+      this.contentDepth = options.contentDepth
     }
     if (options.dispersion !== undefined) {
       this.dispersion = options.dispersion

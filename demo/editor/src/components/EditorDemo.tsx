@@ -2,6 +2,7 @@ import { button, folder, LevaPanel, useControls, useCreateStore } from 'leva'
 import { useEffect, useRef, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import {
+  type BackdropMetrics,
   Container,
   Glass,
   Group,
@@ -79,6 +80,8 @@ type ContainerNode = BaseNode & {
   thickness: number
   displacementFactor: number
   ior: number
+  contentIor: number
+  contentDepth: number
   dispersion: number
   surfaceProfile: SurfaceProfile
   lightDirection: number
@@ -115,11 +118,16 @@ type RuntimeContainerEntry = {
   id: string
   tint: TintColor
   node: Container
+  contentBindings: DemoGlassContentBinding[]
 }
 
 type RuntimeBuildResult = {
   node: Group | Container
   containers: RuntimeContainerEntry[]
+}
+
+type DemoGlassContentBinding = {
+  applyBackdropMetrics: (metrics: BackdropMetrics | null) => void
 }
 
 type AdaptiveTintState = {
@@ -208,6 +216,8 @@ function createContainerNode(overrides: Partial<ContainerNode> = {}): ContainerN
     thickness: overrides.thickness ?? 90,
     displacementFactor: overrides.displacementFactor ?? 1,
     ior: overrides.ior ?? 1.5,
+    contentIor: overrides.contentIor ?? 1,
+    contentDepth: overrides.contentDepth ?? 0,
     dispersion: overrides.dispersion ?? 0,
     surfaceProfile: overrides.surfaceProfile ?? 'convex',
     lightDirection: overrides.lightDirection ?? -Math.PI / 4,
@@ -472,6 +482,8 @@ function buildRuntimeNode(node: RootNode): RuntimeBuildResult {
     thickness: node.thickness,
     displacementFactor: node.displacementFactor,
     ior: node.ior,
+    contentIor: node.contentIor,
+    contentDepth: node.contentDepth,
     dispersion: node.dispersion,
     surfaceProfile: node.surfaceProfile,
     lightDirection: node.lightDirection,
@@ -486,7 +498,10 @@ function buildRuntimeNode(node: RootNode): RuntimeBuildResult {
     zIndex: node.zIndex,
   })
 
+  const contentBindings: DemoGlassContentBinding[] = []
   for (const child of node.children) {
+    const content = createDemoGlassContent(child)
+    contentBindings.push(content.binding)
     container.add(
       new Glass({
         x: child.x,
@@ -499,6 +514,7 @@ function buildRuntimeNode(node: RootNode): RuntimeBuildResult {
         height: child.height,
         cornerRadius: child.cornerRadius,
         cornerTransitionSpeed: child.cornerTransitionSpeed,
+        content: content.element,
       }),
     )
   }
@@ -510,8 +526,161 @@ function buildRuntimeNode(node: RootNode): RuntimeBuildResult {
         id: node.id,
         tint: node.tint,
         node: container,
+        contentBindings,
       },
     ],
+  }
+}
+
+function createDemoGlassContent(node: GlassNode) {
+  const linearToSrgb = (value: number) => {
+    const clamped = clamp(value, 0, 1)
+    if (clamped <= 0.0031308) {
+      return clamped * 12.92
+    }
+    return 1.055 * clamped ** (1 / 2.4) - 0.055
+  }
+
+  const color = (r: number, g: number, b: number, alpha = 1) =>
+    `rgba(${Math.round(clamp(r, 0, 1) * 255)}, ${Math.round(clamp(g, 0, 1) * 255)}, ${Math.round(
+      clamp(b, 0, 1) * 255,
+    )}, ${clamp(alpha, 0, 1)})`
+
+  const compact = node.width < 180 || node.height < 80
+  const root = document.createElement('div')
+  root.style.width = '100%'
+  root.style.height = '100%'
+  root.style.boxSizing = 'border-box'
+  root.style.display = 'flex'
+  root.style.flexDirection = compact ? 'row' : 'column'
+  root.style.alignItems = compact ? 'center' : 'stretch'
+  root.style.justifyContent = compact ? 'center' : 'space-between'
+  root.style.gap = compact ? '10px' : '12px'
+  root.style.padding = compact ? '12px 16px' : '18px 20px'
+  root.style.borderRadius = `${Math.max(16, Math.min(node.height * 0.38, 28))}px`
+  root.style.border = '1px solid rgba(18, 21, 31, 0.08)'
+  root.style.transition = 'color 220ms ease, border-color 220ms ease'
+  root.style.fontFamily =
+    'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+
+  const eyebrow = document.createElement('div')
+  eyebrow.textContent = compact ? 'HTML' : 'DOM CONTENT'
+  eyebrow.style.fontSize = compact ? '10px' : '11px'
+  eyebrow.style.fontWeight = '700'
+  eyebrow.style.letterSpacing = '0.12em'
+  eyebrow.style.textTransform = 'uppercase'
+  eyebrow.style.opacity = '0.55'
+  eyebrow.style.transition = 'color 220ms ease'
+
+  const title = document.createElement('div')
+  title.textContent = compact ? 'Live' : node.name
+  title.style.fontSize = compact ? '16px' : '26px'
+  title.style.fontWeight = '700'
+  title.style.lineHeight = '1'
+  title.style.transition = 'color 220ms ease'
+
+  const subtitle = document.createElement('div')
+  subtitle.textContent = compact ? 'Canvas child' : `${Math.round(node.width)} × ${Math.round(node.height)}`
+  subtitle.style.fontSize = compact ? '11px' : '13px'
+  subtitle.style.fontWeight = '500'
+  subtitle.style.opacity = '0.6'
+  subtitle.style.transition = 'color 220ms ease'
+
+  const badge = document.createElement('div')
+  badge.textContent = compact ? 'LG' : 'HTML'
+  badge.style.alignSelf = compact ? 'auto' : 'flex-start'
+  badge.style.padding = compact ? '6px 10px' : '8px 12px'
+  badge.style.borderRadius = '999px'
+  badge.style.fontSize = compact ? '11px' : '12px'
+  badge.style.fontWeight = '700'
+  badge.style.letterSpacing = '0.08em'
+  badge.style.textTransform = 'uppercase'
+  badge.style.transition = 'color 220ms ease, background-color 220ms ease'
+
+  const chips: HTMLDivElement[] = []
+
+  const applyBackdropMetrics = (metrics: BackdropMetrics | null) => {
+    const luminance = metrics?.luminanceP50 ?? 0.5
+    const average = metrics?.averageLinearColor ?? { r: 0.5, g: 0.5, b: 0.5 }
+    const accent = {
+      r: linearToSrgb(average.r),
+      g: linearToSrgb(average.g),
+      b: linearToSrgb(average.b),
+    }
+    const brightBackdrop = luminance >= 0.5
+    const primary = brightBackdrop ? 0.08 : 0.96
+    const secondary = brightBackdrop ? 0.42 : 0.7
+    const tertiary = brightBackdrop ? 0.54 : 0.8
+
+    root.style.color = color(primary, primary, primary)
+    root.style.borderColor = color(primary, primary, primary, brightBackdrop ? 0.08 : 0.16)
+    eyebrow.style.color = color(tertiary, tertiary, tertiary)
+    title.style.color = color(primary, primary, primary)
+    subtitle.style.color = color(secondary, secondary, secondary)
+    badge.style.color = color(primary, primary, primary)
+    badge.style.background = color(accent.r, accent.g, accent.b, brightBackdrop ? 0.18 : 0.28)
+
+    for (const chip of chips) {
+      chip.style.color = color(primary, primary, primary)
+      chip.style.background = color(primary, primary, primary, brightBackdrop ? 0.06 : 0.14)
+    }
+  }
+
+  applyBackdropMetrics(null)
+
+  if (compact) {
+    const stack = document.createElement('div')
+    stack.style.display = 'flex'
+    stack.style.flexDirection = 'column'
+    stack.style.gap = '2px'
+    stack.append(eyebrow, title, subtitle)
+    root.append(stack, badge)
+    return {
+      element: root,
+      binding: {
+        applyBackdropMetrics,
+      },
+    }
+  }
+
+  const header = document.createElement('div')
+  header.style.display = 'flex'
+  header.style.justifyContent = 'space-between'
+  header.style.alignItems = 'flex-start'
+  header.style.gap = '12px'
+
+  const copy = document.createElement('div')
+  copy.style.display = 'flex'
+  copy.style.flexDirection = 'column'
+  copy.style.gap = '6px'
+  copy.append(eyebrow, title, subtitle)
+  header.append(copy, badge)
+
+  const footer = document.createElement('div')
+  footer.style.display = 'grid'
+  footer.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))'
+  footer.style.gap = '8px'
+
+  for (const label of ['Refracted', 'Sharp', 'Untinted']) {
+    const chip = document.createElement('div')
+    chip.textContent = label
+    chip.style.padding = '10px 12px'
+    chip.style.borderRadius = '14px'
+    chip.style.background = 'rgba(24, 27, 34, 0.05)'
+    chip.style.fontSize = '12px'
+    chip.style.fontWeight = '600'
+    chip.style.textAlign = 'center'
+    chip.style.transition = 'color 220ms ease, background-color 220ms ease'
+    chips.push(chip)
+    footer.append(chip)
+  }
+
+  root.append(header, footer)
+  return {
+    element: root,
+    binding: {
+      applyBackdropMetrics,
+    },
   }
 }
 
@@ -739,6 +908,18 @@ function InspectorControls({
                 step: 0.01,
                 onChange: (value: number) => updateSelectedNode((node) => ({ ...node, ior: value })),
               },
+              contentIor: {
+                value: selectedNode.contentIor,
+                step: 0.01,
+                onChange: (value: number) =>
+                  updateSelectedNode((node) => ({ ...node, contentIor: value })),
+              },
+              contentDepth: {
+                value: selectedNode.contentDepth,
+                step: 0.25,
+                onChange: (value: number) =>
+                  updateSelectedNode((node) => ({ ...node, contentDepth: value })),
+              },
               dispersion: {
                 value: selectedNode.dispersion,
                 step: 0.01,
@@ -883,7 +1064,7 @@ export function EditorDemo() {
   const frameRef = useRef<number | null>(null)
   const lastFrameTimeRef = useRef<number | null>(null)
   const topLevelRuntimeNodesRef = useRef<Array<Group | Container>>([])
-  const runtimeContainersRef = useRef<Map<string, Container>>(new Map())
+  const runtimeContainersRef = useRef<Map<string, RuntimeContainerEntry>>(new Map())
   const adaptiveTintStatesRef = useRef<Map<string, AdaptiveTintState>>(new Map())
   const backdropSettingsRef = useRef<BackdropSettings>(DEFAULT_BACKDROP_SETTINGS)
   const [sceneState, setSceneState] = useState<SceneState>(() => createDefaultSceneState())
@@ -916,13 +1097,16 @@ export function EditorDemo() {
       const deltaMs = deltaSeconds * 1000
       lastFrameTimeRef.current = now
 
-      for (const [id, container] of runtimeContainersRef.current) {
+      for (const [id, entry] of runtimeContainersRef.current) {
         const adaptiveTintState = adaptiveTintStatesRef.current.get(id)
         if (!adaptiveTintState) {
           continue
         }
 
-        const metrics = renderer.getBackdropMetrics(container)
+        const metrics = renderer.getBackdropMetrics(entry.node)
+        for (const binding of entry.contentBindings) {
+          binding.applyBackdropMetrics(metrics)
+        }
         if (metrics) {
           const nextObservedBrightness = targetTintBrightness(metrics.luminanceP50)
           if (shouldUpdateAdaptiveBrightness(adaptiveTintState.observedBrightness, nextObservedBrightness)) {
@@ -942,7 +1126,7 @@ export function EditorDemo() {
         adaptiveTintState.currentBrightness +=
           (adaptiveTintState.targetBrightness - adaptiveTintState.currentBrightness) * blend
 
-        container.tint = {
+        entry.node.tint = {
           r: adaptiveTintState.currentBrightness,
           g: adaptiveTintState.currentBrightness,
           b: adaptiveTintState.currentBrightness,
@@ -967,8 +1151,8 @@ export function EditorDemo() {
         node.remove()
       }
       topLevelRuntimeNodesRef.current = []
-      for (const container of runtimeContainersRef.current.values()) {
-        renderer.setBackdropMetricsTracking(container, false)
+      for (const entry of runtimeContainersRef.current.values()) {
+        renderer.setBackdropMetricsTracking(entry.node, false)
       }
       runtimeContainersRef.current.clear()
       adaptiveTintStatesRef.current.clear()
@@ -1024,8 +1208,8 @@ export function EditorDemo() {
       return
     }
 
-    for (const container of runtimeContainersRef.current.values()) {
-      renderer?.setBackdropMetricsTracking(container, false)
+    for (const entry of runtimeContainersRef.current.values()) {
+      renderer?.setBackdropMetricsTracking(entry.node, false)
     }
 
     for (const node of topLevelRuntimeNodesRef.current) {
@@ -1034,7 +1218,7 @@ export function EditorDemo() {
 
     const previousAdaptiveTintStates = adaptiveTintStatesRef.current
     const nextAdaptiveTintStates = new Map<string, AdaptiveTintState>()
-    const nextRuntimeContainers = new Map<string, Container>()
+    const nextRuntimeContainers = new Map<string, RuntimeContainerEntry>()
     const nextTopLevel = sceneState.children.map((child) => {
       const result = buildRuntimeNode(child)
       scene.add(result.node)
@@ -1053,7 +1237,7 @@ export function EditorDemo() {
 
         nextAdaptiveTintState.alpha = entry.tint.a
         nextAdaptiveTintStates.set(entry.id, nextAdaptiveTintState)
-        nextRuntimeContainers.set(entry.id, entry.node)
+        nextRuntimeContainers.set(entry.id, entry)
         entry.node.tint = {
           r: nextAdaptiveTintState.currentBrightness,
           g: nextAdaptiveTintState.currentBrightness,

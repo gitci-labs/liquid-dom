@@ -190,6 +190,7 @@ new Glass(options?: Partial<Transform> & {
   height?: number
   cornerRadius?: number
   cornerTransitionSpeed?: number
+  content?: HTMLElement | null
 })
 ```
 
@@ -205,6 +206,10 @@ Properties:
 - `height`
 - `cornerRadius`
 - `cornerTransitionSpeed`
+- `content`
+  - optional DOM element rendered inside the glass
+  - rendered via the experimental html-in-canvas element copy path
+  - refracted by the glass, but not blurred
 
 Behavior notes:
 
@@ -217,6 +222,10 @@ Methods:
 - `remove(): void`
   - detaches the glass from its parent container if attached
   - no-op if unattached
+- `setContent(element: HTMLElement | null): void`
+  - assigns or replaces the DOM element rendered inside this glass
+- `clearContent(): void`
+  - removes the DOM element rendered inside this glass
 
 ### `class Container`
 
@@ -232,6 +241,8 @@ new Container(options?: Partial<Transform> & {
   thickness?: number
   displacementFactor?: number
   ior?: number
+  contentIor?: number
+  contentDepth?: number
   dispersion?: number
   surfaceProfile?: SurfaceProfile
   lightDirection?: number
@@ -268,6 +279,11 @@ Rendering properties:
   - overall scale applied to the refractive displacement
 - `ior`
   - base index of refraction
+- `contentIor`
+  - index of refraction used only for DOM content rendered inside glass shapes
+- `contentDepth`
+  - content-only refraction depth in CSS pixels
+  - used instead of `thickness` when calculating DOM-content refraction
 - `dispersion`
   - chromatic dispersion amount
 - `surfaceProfile`
@@ -297,6 +313,8 @@ Defaults:
 - `thickness = 90`
 - `displacementFactor = 1`
 - `ior = 1.5`
+- `contentIor = 1`
+- `contentDepth = 0`
 - `dispersion = 0`
 - `surfaceProfile = 'convex'`
 - `lightDirection = -52°` expressed in radians
