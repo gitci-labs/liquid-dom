@@ -312,6 +312,11 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
 
   // White specular is a separate rim-only highlight driven by 2D normal/light alignment and
   // then masked back to the configured rim band.
+  let primaryBandProgress = clamp(inwardDistance / max(globals.specularPrimary.y, pixelWidth), 0.0, 1.0);
+  let oppositeBandProgress = clamp(inwardDistance / max(globals.specularSecondary.z, pixelWidth), 0.0, 1.0);
+  let primaryStrength = globals.specularPrimary.x - globals.lighting.z * primaryBandProgress * primaryBandProgress;
+  let oppositeStrength =
+    globals.specularSecondary.x - globals.lighting.z * oppositeBandProgress * oppositeBandProgress;
   let oppositeRimBandMask = 1.0 - smoothstep(
     globals.specularSecondary.z,
     globals.specularSecondary.z + pixelWidth,
@@ -319,8 +324,8 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
   );
   let rimSpecular = pow(max(dot(rimNormal, lightDir), 0.0), globals.specularPrimary.z);
   let mirroredRimSpecular = pow(max(dot(rimNormal, mirroredLightDir), 0.0), globals.specularPrimary.z);
-  let primarySpecularOpacity = clamp(rimSpecular * globals.specularPrimary.x, 0.0, 1.0);
-  let oppositeSpecularOpacity = clamp(mirroredRimSpecular * globals.specularSecondary.x, 0.0, 1.0);
+  let primarySpecularOpacity = clamp(rimSpecular * primaryStrength, 0.0, 1.0);
+  let oppositeSpecularOpacity = clamp(mirroredRimSpecular * oppositeStrength, 0.0, 1.0);
   let combinedRimSpecularOpacity = clamp(
     primarySpecularOpacity * rimBandMask + oppositeSpecularOpacity * oppositeRimBandMask,
     0.0,

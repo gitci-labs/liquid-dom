@@ -764,7 +764,7 @@ export class Renderer {
 
     this.globals[12] = Math.sin(container.lightDirection)
     this.globals[13] = -Math.cos(container.lightDirection)
-    this.globals[14] = 0
+    this.globals[14] = container.specularFalloff
     this.globals[15] = 0
 
     this.globals[16] = container.specularStrength

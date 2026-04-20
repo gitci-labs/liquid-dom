@@ -26,6 +26,7 @@ export type ContainerInit = Partial<Transform> & {
   lightDirection?: number
   specularStrength?: number
   specularWidth?: number
+  specularFalloff?: number
   oppositeSpecularStrength?: number
   oppositeSpecularWidth?: number
   specularSharpness?: number
@@ -212,6 +213,8 @@ export class Container implements Transform {
   specularStrength = 1.4
   /** Width of the specular band in CSS pixels. */
   specularWidth = 0.3
+  /** Amount by which specular strength falls off from the edge to the end of the band. */
+  specularFalloff = 0
   /** Multiplier applied to the opposite-side white specular term. */
   oppositeSpecularStrength = 1.4
   /** Width of the opposite-side specular band in CSS pixels. */
@@ -268,6 +271,9 @@ export class Container implements Transform {
     }
     if (options.specularWidth !== undefined) {
       this.specularWidth = options.specularWidth
+    }
+    if (options.specularFalloff !== undefined) {
+      this.specularFalloff = options.specularFalloff
     }
     if (options.oppositeSpecularStrength !== undefined) {
       this.oppositeSpecularStrength = options.oppositeSpecularStrength
