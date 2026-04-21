@@ -142,6 +142,7 @@ export default function App() {
 
     const removeListeners = trackedGlasses.flatMap(({ glass, label }) => {
       return [
+        'click',
         'pointerenter',
         'pointerleave',
         'pointermove',

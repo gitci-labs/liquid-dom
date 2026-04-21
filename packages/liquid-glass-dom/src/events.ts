@@ -2,6 +2,7 @@ import type { Renderer } from './renderer'
 import type { Glass } from './scene'
 
 const GLASS_POINTER_EVENT_TYPES = [
+  'click',
   'pointerenter',
   'pointerleave',
   'pointermove',
@@ -63,4 +64,3 @@ export class GlassPointerEvent extends Event {
     this.inside = init.inside
   }
 }
-

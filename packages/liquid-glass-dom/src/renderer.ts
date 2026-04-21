@@ -137,6 +137,7 @@ type PointerSnapshot = {
 type PointerState = {
   hoveredGlass: Glass | null
   capturedGlass: Glass | null
+  pressedGlass: Glass | null
   lastSnapshot: PointerSnapshot | null
 }
 
@@ -1163,6 +1164,7 @@ export class Renderer {
     state = {
       hoveredGlass: null,
       capturedGlass: null,
+      pressedGlass: null,
       lastSnapshot: null,
     }
     this.pointerStates.set(pointerId, state)
@@ -1236,7 +1238,7 @@ export class Renderer {
   }
 
   private cleanupPointerState(pointerId: number, state: PointerState) {
-    if (state.hoveredGlass || state.capturedGlass) {
+    if (state.hoveredGlass || state.capturedGlass || state.pressedGlass) {
       return
     }
 
@@ -1253,6 +1255,7 @@ export class Renderer {
           this.dispatchGlassPointerEvent('pointercancel', capturedGlass, previousEntry, snapshot, false)
         }
         state.capturedGlass = null
+        state.pressedGlass = null
         this.releaseNativePointerCapture(pointerId)
       }
 
@@ -1299,7 +1302,17 @@ export class Renderer {
       this.dispatchGlassPointerEvent(type, capturedEntry.glass, capturedEntry, snapshot, measurement.inside)
 
       if (type === 'pointerup' || type === 'pointercancel') {
+        if (
+          type === 'pointerup' &&
+          event.button === 0 &&
+          state.pressedGlass === capturedEntry.glass &&
+          measurement.inside
+        ) {
+          this.dispatchGlassPointerEvent('click', capturedEntry.glass, capturedEntry, snapshot, true)
+        }
+
         state.capturedGlass = null
+        state.pressedGlass = null
         this.releaseNativePointerCapture(event.pointerId)
         this.updateHoveredGlass(state, this.hitTestGlassAt(snapshot.canvasX, snapshot.canvasY), snapshot)
       }
@@ -1332,6 +1345,7 @@ export class Renderer {
       this.dispatchGlassPointerEvent(type, hitEntry.glass, hitEntry, snapshot, true)
 
       if (type === 'pointerdown') {
+        state.pressedGlass = hitEntry.glass
         if (this.pendingSceneContentSync) {
           this.syncSceneNow()
         }
@@ -1342,6 +1356,7 @@ export class Renderer {
             this.targetCanvas.setPointerCapture(event.pointerId)
           } catch {
             state.capturedGlass = null
+            state.pressedGlass = null
           }
         }
       }

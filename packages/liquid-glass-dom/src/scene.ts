@@ -15,6 +15,7 @@ export type GlassInit = Partial<Transform> & {
 }
 
 export interface GlassEventMap {
+  click: GlassPointerEvent
   pointerenter: GlassPointerEvent
   pointerleave: GlassPointerEvent
   pointermove: GlassPointerEvent
