@@ -219,6 +219,7 @@ function createRenderTarget(
     },
     format,
     usage:
+      GPU_TEXTURE_USAGE.COPY_SRC |
       GPU_TEXTURE_USAGE.TEXTURE_BINDING |
       GPU_TEXTURE_USAGE.RENDER_ATTACHMENT |
       GPU_TEXTURE_USAGE.COPY_DST |
@@ -387,6 +388,9 @@ export class Renderer {
   private backdropMetricsPipeline: GPURenderPipeline | null = null
   private presentPipeline: GPURenderPipeline | null = null
   private targets: RenderTargetSet | null = null
+  private lastFrameTexture: GPUTexture | null = null
+  private lastFrameWidth = 0
+  private lastFrameHeight = 0
   private backdropMetricsTarget: GPUTexture | null = null
   private emptyContentTexture: GPUTexture | null = null
   private glassContentAtlas: GPUTexture | null = null
@@ -554,6 +558,10 @@ export class Renderer {
     this.resizeObserver?.disconnect()
     destroyTargets(this.targets)
     this.targets = null
+    this.lastFrameTexture?.destroy()
+    this.lastFrameTexture = null
+    this.lastFrameWidth = 0
+    this.lastFrameHeight = 0
     this.backdropMetricsTarget?.destroy()
     this.backdropMetricsTarget = null
     this.glassContentAtlas?.destroy()
@@ -816,6 +824,10 @@ export class Renderer {
       this.targetCanvas.height !== nextHeight ||
       !this.targets
     ) {
+      const previousLastFrame = this.lastFrameTexture
+      const previousLastFrameWidth = this.lastFrameWidth
+      const previousLastFrameHeight = this.lastFrameHeight
+
       this.targetCanvas.width = nextWidth
       this.targetCanvas.height = nextHeight
       destroyTargets(this.targets)
@@ -826,13 +838,21 @@ export class Renderer {
         sceneA: createRenderTarget(this.device, this.presentationFormat, nextWidth, nextHeight),
         sceneB: createRenderTarget(this.device, this.presentationFormat, nextWidth, nextHeight),
       }
-    }
 
-    this.context.configure({
-      device: this.device,
-      format: this.presentationFormat,
-      alphaMode: 'opaque',
-    })
+      this.lastFrameTexture = createRenderTarget(this.device, this.presentationFormat, nextWidth, nextHeight)
+      this.lastFrameWidth = nextWidth
+      this.lastFrameHeight = nextHeight
+
+      this.context.configure({
+        device: this.device,
+        format: this.presentationFormat,
+        usage: GPU_TEXTURE_USAGE.RENDER_ATTACHMENT | GPU_TEXTURE_USAGE.COPY_DST,
+        alphaMode: 'opaque',
+      })
+
+      this.preservePreviousFrameAfterResize(previousLastFrame, previousLastFrameWidth, previousLastFrameHeight)
+      previousLastFrame?.destroy()
+    }
 
     this.syncSceneNow()
   }
@@ -2224,6 +2244,44 @@ export class Renderer {
     pass.end()
   }
 
+  private preservePreviousFrameAfterResize(previousFrame: GPUTexture | null, previousWidth: number, previousHeight: number) {
+    if (
+      !previousFrame ||
+      !this.device ||
+      !this.context ||
+      !this.targets ||
+      !this.lastFrameTexture ||
+      previousWidth <= 0 ||
+      previousHeight <= 0
+    ) {
+      return
+    }
+
+    const copyWidth = Math.min(previousWidth, this.lastFrameWidth)
+    const copyHeight = Math.min(previousHeight, this.lastFrameHeight)
+    const encoder = this.device.createCommandEncoder()
+
+    this.clearTexture(encoder, this.lastFrameTexture)
+    this.clearTexture(encoder, this.targets.background)
+
+    const currentTexture = this.context.getCurrentTexture()
+    this.clearTexture(encoder, currentTexture)
+
+    const region = {
+      sourceX: 0,
+      sourceY: 0,
+      destinationX: 0,
+      destinationY: 0,
+      width: copyWidth,
+      height: copyHeight,
+    }
+
+    copyTextureRegion(encoder, previousFrame, this.lastFrameTexture, region)
+    copyTextureRegion(encoder, previousFrame, this.targets.background, region)
+    copyTextureRegion(encoder, previousFrame, currentTexture, region)
+    this.device.queue.submit([encoder.finish()])
+  }
+
   private writeHtmlCompositeParams(entry: SceneHtmlEntry) {
     if (!this.device || !this.htmlCompositeParamsBuffer || !entry.inverseTransform) {
       return
@@ -2406,6 +2464,20 @@ export class Renderer {
 
     const encoder = this.device.createCommandEncoder()
     this.presentTexture(encoder, currentScene)
+    if (
+      this.lastFrameTexture &&
+      this.lastFrameWidth === this.targetCanvas.width &&
+      this.lastFrameHeight === this.targetCanvas.height
+    ) {
+      copyTextureRegion(encoder, currentScene, this.lastFrameTexture, {
+        sourceX: 0,
+        sourceY: 0,
+        destinationX: 0,
+        destinationY: 0,
+        width: this.lastFrameWidth,
+        height: this.lastFrameHeight,
+      })
+    }
     this.device.queue.submit([encoder.finish()])
   }
 }
