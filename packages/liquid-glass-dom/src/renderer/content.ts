@@ -11,14 +11,14 @@ export type GlassContentEntry = {
   height: number
   deviceWidth: number
   deviceHeight: number
+  copiedDeviceWidth: number
+  copiedDeviceHeight: number
   atlasX: number
   atlasY: number
   atlasWidth: number
   atlasHeight: number
   contentU: number
   contentV: number
-  contentScaleU: number
-  contentScaleV: number
   inverseTransform: Matrix2D
 }
 
@@ -43,6 +43,10 @@ function nextPowerOfTwo(value: number) {
   return next
 }
 
+function getContentBucketSize(requiredSize: number) {
+  return nextPowerOfTwo(Math.max(1, requiredSize))
+}
+
 function tryPackContentAtlas(entries: GlassContentEntry[], atlasWidth: number) {
   const rects = new Map<Html, ContentLayoutRect>()
   let cursorX = 0
@@ -50,8 +54,8 @@ function tryPackContentAtlas(entries: GlassContentEntry[], atlasWidth: number) {
   let rowHeight = 0
 
   for (const entry of entries) {
-    const rectWidth = entry.deviceWidth + CONTENT_ATLAS_PADDING * 2
-    const rectHeight = entry.deviceHeight + CONTENT_ATLAS_PADDING * 2
+    const rectWidth = getContentBucketSize(entry.deviceWidth) + CONTENT_ATLAS_PADDING * 2
+    const rectHeight = getContentBucketSize(entry.deviceHeight) + CONTENT_ATLAS_PADDING * 2
 
     if (rectWidth > atlasWidth) {
       return null
@@ -88,14 +92,20 @@ export function packContentAtlas(entries: GlassContentEntry[], maxTextureSize: n
 
   let maxEntryWidth = 1
   for (const entry of entries) {
-    maxEntryWidth = Math.max(maxEntryWidth, entry.deviceWidth + CONTENT_ATLAS_PADDING * 2)
+    maxEntryWidth = Math.max(maxEntryWidth, getContentBucketSize(entry.deviceWidth) + CONTENT_ATLAS_PADDING * 2)
   }
 
   let atlasWidth = nextPowerOfTwo(maxEntryWidth)
   while (atlasWidth <= maxTextureSize) {
     const layout = tryPackContentAtlas(entries, atlasWidth)
-    if (layout && layout.height <= maxTextureSize) {
-      return layout
+    if (layout) {
+      const atlasHeight = nextPowerOfTwo(layout.height)
+      if (atlasHeight <= maxTextureSize) {
+        return {
+          ...layout,
+          height: atlasHeight,
+        }
+      }
     }
 
     atlasWidth *= 2

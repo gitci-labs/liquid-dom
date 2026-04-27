@@ -259,11 +259,18 @@ fn contentLocalPos(content: ContentData, glassLocalPos: vec2f) -> vec2f {
 
 fn sampleGlassContentAtlas(content: ContentData, localPos: vec2f) -> vec4f {
   let size = content.bounds.xy;
-  if (any(size <= vec2f(0.0)) || any(localPos < vec2f(0.0)) || any(localPos > size)) {
+  let copiedSize = content.bounds.zw;
+  if (
+    any(size <= vec2f(0.0)) ||
+    any(copiedSize <= vec2f(0.0)) ||
+    any(content.atlasRect.zw <= vec2f(0.0)) ||
+    any(localPos < vec2f(0.0)) ||
+    any(localPos > copiedSize)
+  ) {
     return vec4f(0.0);
   }
 
-  let atlasUv = content.atlasRect.xy + (localPos / size) * content.atlasRect.zw;
+  let atlasUv = content.atlasRect.xy + localPos * content.atlasRect.zw;
   return textureSampleLevel(glassContentTexture, backgroundSampler, atlasUv, 0.0);
 }
 
@@ -574,11 +581,17 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
     params.inverse1.x * fragCoord.x + params.inverse1.y * fragCoord.y + params.inverse1.z,
   );
 
-  if (any(params.size.xy <= vec2f(0.0)) || any(localPos < vec2f(0.0)) || any(localPos > params.size.xy)) {
+  if (
+    any(params.size.xy <= vec2f(0.0)) ||
+    any(params.canvas.zw <= vec2f(0.0)) ||
+    any(params.size.zw <= vec2f(0.0)) ||
+    any(localPos < vec2f(0.0)) ||
+    any(localPos > params.size.zw)
+  ) {
     return sceneColor;
   }
 
-  let htmlColor = textureSampleLevel(htmlTexture, compositeSampler, localPos / params.size.xy, 0.0);
+  let htmlColor = textureSampleLevel(htmlTexture, compositeSampler, localPos * params.canvas.zw, 0.0);
   return vec4f(mix(sceneColor.rgb, htmlColor.rgb, htmlColor.a), 1.0);
 }
 `

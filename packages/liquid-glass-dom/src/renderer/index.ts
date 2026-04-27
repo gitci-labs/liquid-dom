@@ -171,6 +171,10 @@ type SceneHtmlEntry = {
   height: number
   deviceWidth: number
   deviceHeight: number
+  copiedDeviceWidth: number
+  copiedDeviceHeight: number
+  textureWidth: number
+  textureHeight: number
   transform: Matrix2D
   inverseTransform: Matrix2D | null
 }
@@ -178,6 +182,26 @@ type SceneHtmlEntry = {
 type GlassContentRange = {
   start: number
   count: number
+}
+
+type PreviousGlassContentAtlasEntry = {
+  deviceWidth: number
+  deviceHeight: number
+  copiedDeviceWidth: number
+  copiedDeviceHeight: number
+  atlasX: number
+  atlasY: number
+  atlasWidth: number
+  atlasHeight: number
+}
+
+type TextureCopyRegion = {
+  sourceX: number
+  sourceY: number
+  destinationX: number
+  destinationY: number
+  width: number
+  height: number
 }
 
 function createRenderTarget(
@@ -212,6 +236,78 @@ function destroyTargets(targets: RenderTargetSet | null) {
   targets.blur.destroy()
   targets.sceneA.destroy()
   targets.sceneB.destroy()
+}
+
+function nextPowerOfTwo(value: number) {
+  let next = 1
+  while (next < value) {
+    next *= 2
+  }
+  return next
+}
+
+function getTextureBucketSize(requiredSize: number, maxTextureSize: number) {
+  if (requiredSize > maxTextureSize) {
+    throw new Error(`Texture size ${requiredSize} exceeds the maximum supported size ${maxTextureSize}.`)
+  }
+
+  return Math.min(nextPowerOfTwo(Math.max(1, requiredSize)), maxTextureSize)
+}
+
+function copyTextureRegion(
+  encoder: GPUCommandEncoder,
+  source: GPUTexture,
+  destination: GPUTexture,
+  region: TextureCopyRegion,
+) {
+  const width = Math.floor(region.width)
+  const height = Math.floor(region.height)
+
+  if (width <= 0 || height <= 0) {
+    return false
+  }
+
+  encoder.copyTextureToTexture(
+    {
+      texture: source,
+      origin: {
+        x: Math.floor(region.sourceX),
+        y: Math.floor(region.sourceY),
+        z: 0,
+      },
+    },
+    {
+      texture: destination,
+      origin: {
+        x: Math.floor(region.destinationX),
+        y: Math.floor(region.destinationY),
+        z: 0,
+      },
+    },
+    {
+      width,
+      height,
+      depthOrArrayLayers: 1,
+    },
+  )
+
+  return true
+}
+
+function getCopiedCssSize(copiedDeviceSize: number, deviceSize: number, cssSize: number) {
+  if (copiedDeviceSize <= 0 || deviceSize <= 0 || cssSize <= 0) {
+    return 0
+  }
+
+  return copiedDeviceSize * cssSize / deviceSize
+}
+
+function getTextureUvScale(deviceSize: number, cssSize: number, textureSize: number) {
+  if (deviceSize <= 0 || cssSize <= 0 || textureSize <= 0) {
+    return 0
+  }
+
+  return deviceSize / cssSize / textureSize
 }
 
 function getSurfaceProfileIndex(profile: SurfaceProfile) {
@@ -263,13 +359,10 @@ export class Renderer {
   private initError: unknown = null
   private destroyed = false
   private initialized = false
-  private sceneHtmlReady = true
-  private contentReady = true
   private needsSceneHtmlCopy = false
   private needsContentCopy = false
   private needsSceneHtmlPaintCopy = false
   private needsContentPaintCopy = false
-  private pendingRender = false
   private pendingSceneContentSync = true
   private sceneContentSyncQueued = false
   private currentDpr = 1
@@ -324,10 +417,6 @@ export class Renderer {
 
     if (shouldCopyContent) {
       this.needsContentPaintCopy = !this.copyGlassContentAtlas()
-    }
-
-    if (this.pendingRender) {
-      this.drawFrame()
     }
   }
 
@@ -437,7 +526,6 @@ export class Renderer {
       throw this.initError
     }
 
-    this.pendingRender = true
     const layers = this.syncSceneNow()
     if (!this.initialized) {
       return
@@ -455,7 +543,6 @@ export class Renderer {
     }
 
     this.destroyed = true
-    this.pendingRender = false
     this.targetCanvas.removeEventListener('paint', this.handlePaintEvent as EventListener)
     this.targetCanvas.removeEventListener('pointermove', this.handlePointerMove, true)
     this.targetCanvas.removeEventListener('pointerdown', this.handlePointerDown, true)
@@ -1264,6 +1351,10 @@ export class Renderer {
           height: -1,
           deviceWidth: 0,
           deviceHeight: 0,
+          copiedDeviceWidth: 0,
+          copiedDeviceHeight: 0,
+          textureWidth: 0,
+          textureHeight: 0,
           transform: layer.transform,
           inverseTransform: null,
         }
@@ -1280,14 +1371,27 @@ export class Renderer {
         contentChanged = true
       }
 
+      const previousDeviceWidth = entry.deviceWidth
+      const previousDeviceHeight = entry.deviceHeight
       const nextDeviceWidth = Math.max(1, Math.round(html.width * this.currentDpr))
       const nextDeviceHeight = Math.max(1, Math.round(html.height * this.currentDpr))
-      const textureSizeChanged =
+      let nextTextureWidth = entry.textureWidth
+      let nextTextureHeight = entry.textureHeight
+      let textureSizeChanged = false
+
+      if (this.device) {
+        nextTextureWidth = getTextureBucketSize(nextDeviceWidth, this.device.limits.maxTextureDimension2D)
+        nextTextureHeight = getTextureBucketSize(nextDeviceHeight, this.device.limits.maxTextureDimension2D)
+        textureSizeChanged =
+          entry.textureWidth !== nextTextureWidth || entry.textureHeight !== nextTextureHeight
+      }
+
+      const contentSizeChanged =
         entry.deviceWidth !== nextDeviceWidth || entry.deviceHeight !== nextDeviceHeight
       if (
         entry.width !== html.width ||
         entry.height !== html.height ||
-        textureSizeChanged
+        contentSizeChanged
       ) {
         entry.width = html.width
         entry.height = html.height
@@ -1303,20 +1407,50 @@ export class Renderer {
           textureSizeChanged
 
         if (rebuildTexture) {
-          entry.texture?.destroy()
-          entry.texture = this.device.createTexture({
+          const previousTexture = entry.texture
+          const nextTexture = this.device.createTexture({
             size: {
-              width: nextDeviceWidth,
-              height: nextDeviceHeight,
+              width: nextTextureWidth,
+              height: nextTextureHeight,
               depthOrArrayLayers: 1,
             },
             format: this.presentationFormat,
             // Required by Chrome's experimental DOM-to-texture copy path for scene Html layers.
             usage:
+              GPU_TEXTURE_USAGE.COPY_SRC |
               GPU_TEXTURE_USAGE.TEXTURE_BINDING |
               GPU_TEXTURE_USAGE.COPY_DST |
               GPU_TEXTURE_USAGE.RENDER_ATTACHMENT,
           })
+
+          if (previousTexture) {
+            const encoder = this.device.createCommandEncoder()
+            const copiedDeviceWidth = Math.min(entry.copiedDeviceWidth, previousDeviceWidth, nextTextureWidth)
+            const copiedDeviceHeight = Math.min(entry.copiedDeviceHeight, previousDeviceHeight, nextTextureHeight)
+            const copied = copyTextureRegion(encoder, previousTexture, nextTexture, {
+              sourceX: 0,
+              sourceY: 0,
+              destinationX: 0,
+              destinationY: 0,
+              width: copiedDeviceWidth,
+              height: copiedDeviceHeight,
+            })
+
+            if (copied) {
+              this.device.queue.submit([encoder.finish()])
+            }
+
+            entry.copiedDeviceWidth = copiedDeviceWidth
+            entry.copiedDeviceHeight = copiedDeviceHeight
+          } else {
+            entry.copiedDeviceWidth = 0
+            entry.copiedDeviceHeight = 0
+          }
+
+          previousTexture?.destroy()
+          entry.texture = nextTexture
+          entry.textureWidth = nextTextureWidth
+          entry.textureHeight = nextTextureHeight
           layoutChanged = true
           contentChanged = true
         }
@@ -1342,27 +1476,40 @@ export class Renderer {
     }
 
     if (activeHtml.size === 0) {
-      this.sceneHtmlReady = true
       this.needsSceneHtmlCopy = false
       this.needsSceneHtmlPaintCopy = false
-      return true
+      return
     }
 
     if (layoutChanged || contentChanged) {
-      this.sceneHtmlReady = false
       this.needsSceneHtmlCopy = true
       this.needsSceneHtmlPaintCopy = true
     }
-
-    return this.sceneHtmlReady
   }
 
   private syncGlassContent(containers: FlattenedContainer[], hostOrder: Map<Html, number>) {
     const activeContentHtml = new Set<Html>()
     const activeEntries: GlassContentEntry[] = []
     const nextRanges = new Map<Glass, GlassContentRange>()
+    const previousAtlasTexture = this.glassContentAtlas
+    const previousAtlasEntries = new Map<Html, PreviousGlassContentAtlasEntry>()
     let layoutChanged = false
     let contentChanged = false
+
+    if (previousAtlasTexture) {
+      for (const entry of this.glassContentEntries.values()) {
+        previousAtlasEntries.set(entry.html, {
+          deviceWidth: entry.deviceWidth,
+          deviceHeight: entry.deviceHeight,
+          copiedDeviceWidth: entry.copiedDeviceWidth,
+          copiedDeviceHeight: entry.copiedDeviceHeight,
+          atlasX: entry.atlasX,
+          atlasY: entry.atlasY,
+          atlasWidth: entry.atlasWidth,
+          atlasHeight: entry.atlasHeight,
+        })
+      }
+    }
 
     for (const containerEntry of containers) {
       const containerTransform = containerEntry.transform
@@ -1404,14 +1551,14 @@ export class Renderer {
               height: -1,
               deviceWidth: 0,
               deviceHeight: 0,
+              copiedDeviceWidth: 0,
+              copiedDeviceHeight: 0,
               atlasX: 0,
               atlasY: 0,
               atlasWidth: 0,
               atlasHeight: 0,
               contentU: 0,
               contentV: 0,
-              contentScaleU: 0,
-              contentScaleV: 0,
               inverseTransform,
             }
             this.glassContentEntries.set(html, contentEntry)
@@ -1475,10 +1622,9 @@ export class Renderer {
     }
 
     if (!this.device) {
-      this.contentReady = activeEntries.length === 0
       this.needsContentCopy = false
       this.needsContentPaintCopy = false
-      return this.contentReady
+      return
     }
 
     this.writeContentEntries(activeEntries)
@@ -1488,32 +1634,32 @@ export class Renderer {
       this.glassContentAtlas = null
       this.glassContentAtlasWidth = 0
       this.glassContentAtlasHeight = 0
-      this.contentReady = true
       this.needsContentCopy = false
       this.needsContentPaintCopy = false
-      return true
+      return
     }
 
     if (layoutChanged) {
       const layout = packContentAtlas(activeEntries, this.device.limits.maxTextureDimension2D)
       const nextAtlasWidth = Math.max(layout.width, 1)
       const nextAtlasHeight = Math.max(layout.height, 1)
-      const rebuildAtlas =
+      const atlasLayoutChanged =
         !this.glassContentAtlas ||
         nextAtlasWidth !== this.glassContentAtlasWidth ||
-        nextAtlasHeight !== this.glassContentAtlasHeight
-
-      if (
-        rebuildAtlas ||
-        activeEntries.some(
-          (entry) =>
+        nextAtlasHeight !== this.glassContentAtlasHeight ||
+        activeEntries.some((entry) => {
+          const rect = layout.rects.get(entry.html)
+          return (
+            !rect ||
+            entry.atlasX !== rect.x ||
+            entry.atlasY !== rect.y ||
             entry.atlasWidth !== nextAtlasWidth ||
-            entry.atlasHeight !== nextAtlasHeight ||
-            !layout.rects.has(entry.html),
-        )
-      ) {
-        this.glassContentAtlas?.destroy()
-        this.glassContentAtlas = this.device.createTexture({
+            entry.atlasHeight !== nextAtlasHeight
+          )
+        })
+
+      if (atlasLayoutChanged) {
+        const nextAtlas = this.device.createTexture({
           size: {
             width: nextAtlasWidth,
             height: nextAtlasHeight,
@@ -1521,10 +1667,68 @@ export class Renderer {
           },
           format: this.presentationFormat ?? 'bgra8unorm',
           usage:
+            GPU_TEXTURE_USAGE.COPY_SRC |
             GPU_TEXTURE_USAGE.TEXTURE_BINDING |
             GPU_TEXTURE_USAGE.COPY_DST |
             GPU_TEXTURE_USAGE.RENDER_ATTACHMENT,
         })
+
+        if (previousAtlasTexture) {
+          const encoder = this.device.createCommandEncoder()
+          let copiedAny = false
+
+          for (const entry of activeEntries) {
+            const previousEntry = previousAtlasEntries.get(entry.html)
+            const rect = layout.rects.get(entry.html)
+            if (!previousEntry || !rect) {
+              entry.copiedDeviceWidth = 0
+              entry.copiedDeviceHeight = 0
+              continue
+            }
+
+            const sourceX = previousEntry.atlasX + CONTENT_ATLAS_PADDING
+            const sourceY = previousEntry.atlasY + CONTENT_ATLAS_PADDING
+            const destinationX = rect.x + CONTENT_ATLAS_PADDING
+            const destinationY = rect.y + CONTENT_ATLAS_PADDING
+            const copiedDeviceWidth = Math.min(
+              previousEntry.copiedDeviceWidth,
+              previousEntry.deviceWidth,
+              previousEntry.atlasWidth - sourceX,
+              nextAtlasWidth - destinationX,
+            )
+            const copiedDeviceHeight = Math.min(
+              previousEntry.copiedDeviceHeight,
+              previousEntry.deviceHeight,
+              previousEntry.atlasHeight - sourceY,
+              nextAtlasHeight - destinationY,
+            )
+
+            copiedAny =
+              copyTextureRegion(encoder, previousAtlasTexture, nextAtlas, {
+                sourceX,
+                sourceY,
+                destinationX,
+                destinationY,
+                width: copiedDeviceWidth,
+                height: copiedDeviceHeight,
+              }) || copiedAny
+
+            entry.copiedDeviceWidth = Math.max(0, copiedDeviceWidth)
+            entry.copiedDeviceHeight = Math.max(0, copiedDeviceHeight)
+          }
+
+          if (copiedAny) {
+            this.device.queue.submit([encoder.finish()])
+          }
+        } else {
+          for (const entry of activeEntries) {
+            entry.copiedDeviceWidth = 0
+            entry.copiedDeviceHeight = 0
+          }
+        }
+
+        previousAtlasTexture?.destroy()
+        this.glassContentAtlas = nextAtlas
         this.glassContentAtlasWidth = nextAtlasWidth
         this.glassContentAtlasHeight = nextAtlasHeight
       }
@@ -1541,21 +1745,15 @@ export class Renderer {
         entry.atlasHeight = nextAtlasHeight
         entry.contentU = (rect.x + CONTENT_ATLAS_PADDING) / nextAtlasWidth
         entry.contentV = (rect.y + CONTENT_ATLAS_PADDING) / nextAtlasHeight
-        entry.contentScaleU = entry.deviceWidth / nextAtlasWidth
-        entry.contentScaleV = entry.deviceHeight / nextAtlasHeight
       }
 
       this.writeContentEntries(activeEntries)
-      this.contentReady = false
       this.needsContentCopy = true
       this.needsContentPaintCopy = true
     } else if (contentChanged) {
-      this.contentReady = false
       this.needsContentCopy = true
       this.needsContentPaintCopy = true
     }
-
-    return this.contentReady
   }
 
   private writeContentEntries(entries: GlassContentEntry[]) {
@@ -1586,13 +1784,13 @@ export class Renderer {
 
       packed[offset + 8] = entry.width
       packed[offset + 9] = entry.height
-      packed[offset + 10] = 0
-      packed[offset + 11] = 0
+      packed[offset + 10] = getCopiedCssSize(entry.copiedDeviceWidth, entry.deviceWidth, entry.width)
+      packed[offset + 11] = getCopiedCssSize(entry.copiedDeviceHeight, entry.deviceHeight, entry.height)
 
       packed[offset + 12] = entry.contentU
       packed[offset + 13] = entry.contentV
-      packed[offset + 14] = entry.contentScaleU
-      packed[offset + 15] = entry.contentScaleV
+      packed[offset + 14] = getTextureUvScale(entry.deviceWidth, entry.width, entry.atlasWidth)
+      packed[offset + 15] = getTextureUvScale(entry.deviceHeight, entry.height, entry.atlasHeight)
     }
 
     this.device.queue.writeBuffer(this.contentEntriesBuffer, 0, packed)
@@ -1600,7 +1798,6 @@ export class Renderer {
 
   private copySceneHtmlTextures() {
     if (!this.device || this.sceneHtmlEntries.size === 0) {
-      this.sceneHtmlReady = true
       this.needsSceneHtmlCopy = false
       return true
     }
@@ -1619,6 +1816,8 @@ export class Renderer {
           entry.deviceHeight,
           { texture: entry.texture },
         )
+        entry.copiedDeviceWidth = entry.deviceWidth
+        entry.copiedDeviceHeight = entry.deviceHeight
       } catch (error) {
         copiedAll = false
         if (!(error instanceof DOMException && error.name === 'InvalidStateError')) {
@@ -1627,19 +1826,18 @@ export class Renderer {
       }
     }
 
-    this.sceneHtmlReady = copiedAll
     this.needsSceneHtmlCopy = !copiedAll
     return copiedAll
   }
 
   private copyGlassContentAtlas() {
     if (!this.device || !this.glassContentAtlas || this.glassContentOrder.length === 0) {
-      this.contentReady = true
       this.needsContentCopy = false
       return true
     }
 
     let copiedAll = true
+    let copiedAny = false
     for (const entry of this.glassContentOrder) {
       try {
         ;(this.device.queue as GPUQueueWithElementCopy).copyElementImageToTexture(
@@ -1655,6 +1853,9 @@ export class Renderer {
             },
           },
         )
+        entry.copiedDeviceWidth = entry.deviceWidth
+        entry.copiedDeviceHeight = entry.deviceHeight
+        copiedAny = true
       } catch (error) {
         copiedAll = false
         if (!(error instanceof DOMException && error.name === 'InvalidStateError')) {
@@ -1663,7 +1864,10 @@ export class Renderer {
       }
     }
 
-    this.contentReady = copiedAll
+    if (copiedAny) {
+      this.writeContentEntries(this.glassContentOrder)
+    }
+
     this.needsContentCopy = !copiedAll
     return copiedAll
   }
@@ -2028,8 +2232,8 @@ export class Renderer {
     const inverse = entry.inverseTransform
     this.htmlCompositeParams[0] = this.targetCanvas.width
     this.htmlCompositeParams[1] = this.targetCanvas.height
-    this.htmlCompositeParams[2] = 0
-    this.htmlCompositeParams[3] = 0
+    this.htmlCompositeParams[2] = getTextureUvScale(entry.deviceWidth, entry.width, entry.textureWidth)
+    this.htmlCompositeParams[3] = getTextureUvScale(entry.deviceHeight, entry.height, entry.textureHeight)
 
     this.htmlCompositeParams[4] = inverse.a
     this.htmlCompositeParams[5] = inverse.c
@@ -2043,8 +2247,8 @@ export class Renderer {
 
     this.htmlCompositeParams[12] = entry.width
     this.htmlCompositeParams[13] = entry.height
-    this.htmlCompositeParams[14] = 0
-    this.htmlCompositeParams[15] = 0
+    this.htmlCompositeParams[14] = getCopiedCssSize(entry.copiedDeviceWidth, entry.deviceWidth, entry.width)
+    this.htmlCompositeParams[15] = getCopiedCssSize(entry.copiedDeviceHeight, entry.deviceHeight, entry.height)
 
     this.device.queue.writeBuffer(this.htmlCompositeParamsBuffer, 0, this.htmlCompositeParams)
   }
@@ -2136,9 +2340,6 @@ export class Renderer {
     ) {
       return
     }
-    if (!this.sceneHtmlReady || !this.contentReady) {
-      return
-    }
 
     const seenContainers = new Set<Container>()
 
@@ -2206,6 +2407,5 @@ export class Renderer {
     const encoder = this.device.createCommandEncoder()
     this.presentTexture(encoder, currentScene)
     this.device.queue.submit([encoder.finish()])
-    this.pendingRender = false
   }
 }
