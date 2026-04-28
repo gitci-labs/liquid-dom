@@ -34,7 +34,7 @@ import {
   type BoundsRect,
 } from './metrics'
 import { Container, flattenSceneLayers, Glass, Html, Scene, type TraversedSceneLayer } from '../scene'
-import { BLUR_SHADER, GLASS_SHADER, HTML_COMPOSITE_SHADER, METRICS_SHADER, PRESENT_SHADER } from '../shaders'
+import { BLUR_SHADER, GLASS_SHADER, HTML_COMPOSITE_SHADER, METRICS_SHADER } from '../shaders'
 import type { BackdropMetrics, SurfaceProfile } from '../types'
 
 const GPU_BUFFER_USAGE = {
@@ -364,7 +364,6 @@ export class Renderer {
   private glassPipeline: GPURenderPipeline | null = null
   private htmlCompositePipeline: GPURenderPipeline | null = null
   private backdropMetricsPipeline: GPURenderPipeline | null = null
-  private presentPipeline: GPURenderPipeline | null = null
   private targets: RenderTargetSet | null = null
   private lastFrameTexture: GPUTexture | null = null
   private lastFrameWidth = 0
@@ -705,22 +704,6 @@ export class Renderer {
       },
     })
 
-    const presentPipeline = device.createRenderPipeline({
-      layout: 'auto',
-      vertex: {
-        module: device.createShaderModule({ code: PRESENT_SHADER }),
-        entryPoint: 'vertexMain',
-      },
-      fragment: {
-        module: device.createShaderModule({ code: PRESENT_SHADER }),
-        entryPoint: 'fragmentMain',
-        targets: [{ format: presentationFormat }],
-      },
-      primitive: {
-        topology: 'triangle-list',
-      },
-    })
-
     const backdropMetricsTarget = device.createTexture({
       size: {
         width: BACKDROP_METRICS_SIZE,
@@ -764,7 +747,6 @@ export class Renderer {
     this.glassPipeline = glassPipeline
     this.htmlCompositePipeline = htmlCompositePipeline
     this.backdropMetricsPipeline = backdropMetricsPipeline
-    this.presentPipeline = presentPipeline
     this.backdropMetricsTarget = backdropMetricsTarget
     this.emptyContentTexture = emptyContentTexture
     this.initialized = true
@@ -1075,6 +1057,12 @@ export class Renderer {
     return layers
   }
 
+  private flushSceneContentSync() {
+    if (this.pendingSceneContentSync) {
+      this.syncSceneNow()
+    }
+  }
+
   private syncGlassInteractions(containers: FlattenedContainer[]) {
     const previousEntries = this.glassInteractionEntries
     const { entriesByGlass, orderedEntries } = createGlassInteractionEntries(containers)
@@ -1174,6 +1162,11 @@ export class Renderer {
     this.pointerStates.delete(pointerId)
   }
 
+  private finishPointerEvent(pointerId: number, state: PointerState) {
+    this.flushSceneContentSync()
+    this.cleanupPointerState(pointerId, state)
+  }
+
   private handleRemovedInteractionTargets(previousEntries: Map<Glass, GlassInteractionEntry>) {
     for (const [pointerId, state] of this.pointerStates) {
       const snapshot = state.lastSnapshot
@@ -1215,9 +1208,7 @@ export class Renderer {
       return
     }
 
-    if (this.pendingSceneContentSync) {
-      this.syncSceneNow()
-    }
+    this.flushSceneContentSync()
 
     const state = this.getPointerState(event.pointerId)
     const snapshot = this.createPointerSnapshot(event)
@@ -1264,10 +1255,7 @@ export class Renderer {
         )
       }
 
-      if (this.pendingSceneContentSync) {
-        this.syncSceneNow()
-      }
-      this.cleanupPointerState(event.pointerId, state)
+      this.finishPointerEvent(event.pointerId, state)
       return
     }
 
@@ -1278,10 +1266,7 @@ export class Renderer {
         state.hoveredGlass = null
       }
 
-      if (this.pendingSceneContentSync) {
-        this.syncSceneNow()
-      }
-      this.cleanupPointerState(event.pointerId, state)
+      this.finishPointerEvent(event.pointerId, state)
       return
     }
 
@@ -1297,9 +1282,7 @@ export class Renderer {
 
       if (type === 'pointerdown') {
         state.pressedGlass = hitEntry.glass
-        if (this.pendingSceneContentSync) {
-          this.syncSceneNow()
-        }
+        this.flushSceneContentSync()
 
         if (this.glassInteractionEntries.has(hitEntry.glass)) {
           state.capturedGlass = hitEntry.glass
@@ -1318,10 +1301,7 @@ export class Renderer {
       }
     }
 
-    if (this.pendingSceneContentSync) {
-      this.syncSceneNow()
-    }
-    this.cleanupPointerState(event.pointerId, state)
+    this.finishPointerEvent(event.pointerId, state)
   }
 
   private syncSceneHtml(layers: TraversedSceneLayer[], hostOrder: Map<Html, number>) {
@@ -2296,33 +2276,19 @@ export class Renderer {
     pass.end()
   }
 
-  private presentTexture(encoder: GPUCommandEncoder, source: GPUTexture) {
-    if (!this.device || !this.context || !this.sampler || !this.presentPipeline) {
+  private copyTextureToPresentation(encoder: GPUCommandEncoder, source: GPUTexture) {
+    if (!this.context) {
       return
     }
 
-    const bindGroup = this.device.createBindGroup({
-      layout: this.presentPipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: this.sampler },
-        { binding: 1, resource: source.createView() },
-      ],
+    copyTextureRegion(encoder, source, this.context.getCurrentTexture(), {
+      sourceX: 0,
+      sourceY: 0,
+      destinationX: 0,
+      destinationY: 0,
+      width: this.targetCanvas.width,
+      height: this.targetCanvas.height,
     })
-
-    const pass = encoder.beginRenderPass({
-      colorAttachments: [
-        {
-          clearValue: { r: 0, g: 0, b: 0, a: 1 },
-          loadOp: 'clear',
-          storeOp: 'store',
-          view: this.context.getCurrentTexture().createView(),
-        },
-      ],
-    })
-    pass.setPipeline(this.presentPipeline)
-    pass.setBindGroup(0, bindGroup)
-    pass.draw(3)
-    pass.end()
   }
 
   private drawFrame(layers = this.getSortedSceneLayers()) {
@@ -2333,17 +2299,14 @@ export class Renderer {
       !this.targets ||
       !this.glassPipeline ||
       !this.htmlCompositePipeline ||
-      !this.blurPipeline ||
-      !this.presentPipeline
+      !this.blurPipeline
     ) {
       return
     }
 
     const seenContainers = new Set<Container>()
-
-    const clearEncoder = this.device.createCommandEncoder()
-    this.clearTexture(clearEncoder, this.targets.background)
-    this.device.queue.submit([clearEncoder.finish()])
+    let encoder = this.device.createCommandEncoder()
+    this.clearTexture(encoder, this.targets.background)
 
     let currentScene = this.targets.background
     let nextScene = this.targets.sceneA
@@ -2355,16 +2318,15 @@ export class Renderer {
           continue
         }
 
-        const encoder = this.device.createCommandEncoder()
         this.compositeHtmlLayer(encoder, currentScene, nextScene, htmlEntry)
         this.device.queue.submit([encoder.finish()])
+        encoder = this.device.createCommandEncoder()
 
         currentScene = nextScene
         nextScene = nextScene === this.targets.sceneA ? this.targets.sceneB : this.targets.sceneA
         continue
       }
 
-      const encoder = this.device.createCommandEncoder()
       const packedShapes = this.packShapes(entry.child, entry.transform)
       this.writeGlobals(entry.child, packedShapes.shapeCount)
       this.blurTexture(encoder, currentScene, entry.child)
@@ -2381,6 +2343,7 @@ export class Renderer {
 
       this.renderContainer(encoder, currentScene, nextScene)
       this.device.queue.submit([encoder.finish()])
+      encoder = this.device.createCommandEncoder()
 
       if (metricsState && scheduledMetricsReadback) {
         this.scheduleBackdropMetricsReadback(metricsState)
@@ -2402,8 +2365,7 @@ export class Renderer {
       }
     }
 
-    const encoder = this.device.createCommandEncoder()
-    this.presentTexture(encoder, currentScene)
+    this.copyTextureToPresentation(encoder, currentScene)
     if (
       this.lastFrameTexture &&
       this.lastFrameWidth === this.targetCanvas.width &&

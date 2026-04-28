@@ -503,38 +503,6 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
 }
 `
 
-// Used by the final present pass to copy the latest composited scene texture to
-// the swapchain texture shown on screen.
-export const PRESENT_SHADER = /* wgsl */ `
-@group(0) @binding(0) var presentSampler: sampler;
-@group(0) @binding(1) var presentTexture: texture_2d<f32>;
-
-struct VertexOutput {
-  @builtin(position) position: vec4f,
-  @location(0) uv: vec2f,
-};
-
-@vertex
-fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-  var positions = array<vec2f, 3>(
-    vec2f(-1.0, -3.0),
-    vec2f(-1.0, 1.0),
-    vec2f(3.0, 1.0),
-  );
-
-  let position = positions[vertexIndex];
-  var output: VertexOutput;
-  output.position = vec4f(position, 0.0, 1.0);
-  output.uv = vec2f(position.x * 0.5 + 0.5, 0.5 - position.y * 0.5);
-  return output;
-}
-
-@fragment
-fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
-  return textureSampleLevel(presentTexture, presentSampler, in.uv, 0.0);
-}
-`
-
 // Composites one DOM-backed Html texture into the scene using the node's world transform.
 export const HTML_COMPOSITE_SHADER = /* wgsl */ `
 struct HtmlCompositeParams {
