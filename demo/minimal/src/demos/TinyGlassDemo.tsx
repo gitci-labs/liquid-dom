@@ -93,7 +93,7 @@ export default function TinyGlassDemo() {
       thickness: 86,
       contentDepth: 18,
       tint: { r: 0.12, g: 0.16, b: 0.18, a: 0.62 },
-      zIndex: 0,
+      zIndex: 2,
     })
 
     const glass = new Glass({
