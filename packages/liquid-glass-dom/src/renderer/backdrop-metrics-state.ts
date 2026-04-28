@@ -3,6 +3,7 @@ import type { BackdropMetrics } from '../types'
 import { GPU_BUFFER_USAGE } from './gpu-constants'
 import { BACKDROP_METRICS_BUFFER_SIZE, parseBackdropMetrics } from './metrics'
 
+/** Per-container state for asynchronous backdrop metrics readback. */
 export type BackdropMetricsState = {
   container: Container
   readbackBuffer: GPUBuffer | null
@@ -12,14 +13,17 @@ export type BackdropMetricsState = {
   cleanupAfterPending: boolean
 }
 
+/** Tracks cached backdrop metrics resources and readback lifecycle. */
 export class BackdropMetricsTracker {
   private device: GPUDevice | null = null
   private readonly stateByContainer = new WeakMap<Container, BackdropMetricsState>()
   private readonly trackedContainers = new Set<Container>()
   private readonly pendingStates = new Set<BackdropMetricsState>()
 
+  /** Creates a tracker that can query renderer teardown state. */
   constructor(private readonly isDestroyed: () => boolean) {}
 
+  /** Attaches the GPU device and allocates buffers for already tracked containers. */
   setDevice(device: GPUDevice) {
     this.device = device
 
@@ -31,6 +35,7 @@ export class BackdropMetricsTracker {
     }
   }
 
+  /** Enables or disables metrics tracking for a container. */
   setTracking(container: Container, enabled: boolean) {
     if (enabled) {
       const state = this.getOrCreateState(container)
@@ -57,6 +62,7 @@ export class BackdropMetricsTracker {
     this.cleanupState(state)
   }
 
+  /** Returns the latest completed metrics for a tracked in-scene container. */
   getMetrics(container: Container) {
     if (!this.trackedContainers.has(container)) {
       return null
@@ -70,6 +76,7 @@ export class BackdropMetricsTracker {
     return state.metrics
   }
 
+  /** Returns mutable state for a tracked container, creating it if needed. */
   getTrackedState(container: Container) {
     if (!this.trackedContainers.has(container)) {
       return null
@@ -78,6 +85,7 @@ export class BackdropMetricsTracker {
     return this.getOrCreateState(container)
   }
 
+  /** Allocates the readback buffer for a metrics state if possible. */
   ensureResources(state: BackdropMetricsState) {
     if (!this.device || state.readbackBuffer) {
       return
@@ -89,6 +97,7 @@ export class BackdropMetricsTracker {
     })
   }
 
+  /** Marks which tracked containers were seen in the latest rendered scene. */
   markSceneMembership(seenContainers: Set<Container>) {
     for (const container of this.trackedContainers) {
       const state = this.stateByContainer.get(container)
@@ -103,6 +112,7 @@ export class BackdropMetricsTracker {
     }
   }
 
+  /** Starts an asynchronous readback and parses metrics when mapping completes. */
   scheduleReadback(state: BackdropMetricsState) {
     const readbackBuffer = state.readbackBuffer
     if (!readbackBuffer || state.pendingReadback) {
@@ -148,6 +158,7 @@ export class BackdropMetricsTracker {
       })
   }
 
+  /** Releases completed resources and marks pending readbacks for cleanup. */
   destroy() {
     for (const container of this.trackedContainers) {
       const state = this.stateByContainer.get(container)
@@ -168,6 +179,7 @@ export class BackdropMetricsTracker {
     }
   }
 
+  /** Returns existing metrics state for a container or creates a new one. */
   private getOrCreateState(container: Container) {
     let state = this.stateByContainer.get(container)
     if (state) {
@@ -186,6 +198,7 @@ export class BackdropMetricsTracker {
     return state
   }
 
+  /** Releases a state readback buffer once it is no longer pending. */
   private cleanupState(state: BackdropMetricsState) {
     if (state.pendingReadback) {
       state.cleanupAfterPending = true

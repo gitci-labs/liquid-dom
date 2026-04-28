@@ -79,6 +79,7 @@ type BlurParamsBuffer = GpuStructBuffer<GpuStructDefinition<typeof BlurParamsLay
 type BackdropMetricsBoundsBuffer = GpuStructBuffer<GpuStructDefinition<typeof BackdropMetricsBoundsLayout>>
 type HtmlCompositeParamsBuffer = GpuStructBuffer<GpuStructDefinition<typeof HtmlCompositeParamsLayout>>
 
+/** Maps a public surface profile string to the shader enum value. */
 function getSurfaceProfileIndex(profile: SurfaceProfile) {
   if (profile === 'convex') {
     return 0
@@ -136,6 +137,7 @@ export class Renderer {
   private lastFrameTexture: GPUTexture | null = null
   private backdropMetricsTarget: GPUTexture | null = null
 
+  /** Handles canvas paint events by copying managed DOM content into GPU textures. */
   private readonly handlePaintEvent = (event: Event) => {
     if (this.destroyed || !this.device || !this.targets) {
       return
@@ -144,6 +146,7 @@ export class Renderer {
     this.domContent.handlePaintEvent(event)
   }
 
+  /** Marks scene-derived DOM and interaction state as dirty after scene mutations. */
   private readonly handleSceneMutation = () => {
     this.queueSceneContentSync()
   }
@@ -254,6 +257,7 @@ export class Renderer {
     this.pointerController.clear()
   }
 
+  /** Creates WebGPU resources and pipelines needed by the renderer. */
   private async initialize() {
     const gpuNavigator = navigator as Navigator & { gpu?: GPU }
     if (!gpuNavigator.gpu) {
@@ -385,6 +389,7 @@ export class Renderer {
     this.queueSceneContentSync()
   }
 
+  /** Synchronizes canvas/backing texture dimensions with CSS size and DPR. */
   private syncCanvasSize() {
     if (!this.device || !this.context || !this.presentationFormat) {
       return
@@ -432,6 +437,7 @@ export class Renderer {
     this.syncSceneNow()
   }
 
+  /** Ensures the shape storage buffer can hold the active glass count. */
   private ensureShapesBuffer(requiredCount: number) {
     if (!this.device) {
       return
@@ -448,6 +454,7 @@ export class Renderer {
     this.shapesBuffer.ensureCapacity(requiredCount)
   }
 
+  /** Queues scene-derived DOM and pointer state synchronization on a microtask. */
   private queueSceneContentSync() {
     this.pendingSceneContentSync = true
 
@@ -467,6 +474,7 @@ export class Renderer {
     })
   }
 
+  /** Immediately synchronizes scene-derived DOM, content, and pointer caches. */
   private syncSceneNow() {
     const layers = getSortedSceneLayers(this.scene)
     const containers = getLayerContainers(layers)
@@ -479,12 +487,14 @@ export class Renderer {
     return layers
   }
 
+  /** Flushes any queued scene content synchronization before pointer work. */
   private flushSceneContentSync() {
     if (this.pendingSceneContentSync) {
       this.syncSceneNow()
     }
   }
 
+  /** Writes per-container global shader parameters. */
   private writeGlobals(container: Container, shapeCount: number) {
     if (!this.device || !this.globalsBuffer) {
       return
@@ -539,6 +549,7 @@ export class Renderer {
     })
   }
 
+  /** Writes blur direction and radius uniforms for a container. */
   private writeBlurParams(container: Container) {
     if (!this.device || !this.blurHorizontalBuffer || !this.blurVerticalBuffer) {
       return
@@ -561,6 +572,7 @@ export class Renderer {
     })
   }
 
+  /** Writes the device-pixel bounds sampled by the backdrop metrics pass. */
   private writeBackdropMetricsBounds(bounds: BoundsRect) {
     if (!this.device || !this.backdropMetricsBoundsBuffer) {
       return
@@ -576,6 +588,7 @@ export class Renderer {
     })
   }
 
+  /** Packs visible glass shapes into the storage buffer and accumulates bounds. */
   private packShapes(container: Container, containerTransform: Matrix2D): PackedShapesResult {
     const dpr = this.currentDpr
     const glasses = getSortedGlasses(container)
@@ -640,6 +653,7 @@ export class Renderer {
     }
   }
 
+  /** Runs the separable blur passes for one container backdrop. */
   private blurTexture(encoder: GPUCommandEncoder, source: GPUTexture, targetContainer: Container) {
     if (
       !this.device ||
@@ -677,6 +691,7 @@ export class Renderer {
     })
   }
 
+  /** Renders and queues copy commands for one backdrop metrics target. */
   private renderBackdropMetrics(
     encoder: GPUCommandEncoder,
     state: BackdropMetricsState,
@@ -738,6 +753,7 @@ export class Renderer {
     return true
   }
 
+  /** Renders one container's glass shapes over the current scene texture. */
   private renderContainer(
     encoder: GPUCommandEncoder,
     sharpSource: GPUTexture,
@@ -779,6 +795,7 @@ export class Renderer {
     })
   }
 
+  /** Copies the previous presented frame into newly resized presentation targets. */
   private preservePreviousFrameAfterResize(previousFrame: GPUTexture | null, previousWidth: number, previousHeight: number) {
     if (
       !previousFrame ||
@@ -814,6 +831,7 @@ export class Renderer {
     this.device.queue.submit([encoder.finish()])
   }
 
+  /** Writes uniforms for compositing one scene-attached HTML texture. */
   private writeHtmlCompositeParams(entry: SceneHtmlEntry) {
     if (!this.device || !this.htmlCompositeParamsBuffer || !entry.inverseTransform) {
       return
@@ -842,6 +860,7 @@ export class Renderer {
     })
   }
 
+  /** Composites a scene-attached HTML layer over the current scene texture. */
   private compositeHtmlLayer(
     encoder: GPUCommandEncoder,
     sharpSource: GPUTexture,
@@ -874,6 +893,7 @@ export class Renderer {
     })
   }
 
+  /** Copies the completed scene texture into the canvas presentation texture. */
   private copyTextureToPresentation(encoder: GPUCommandEncoder, source: GPUTexture) {
     if (!this.context) {
       return
@@ -889,6 +909,7 @@ export class Renderer {
     })
   }
 
+  /** Draws a complete frame for the provided sorted scene layers. */
   private drawFrame(layers = getSortedSceneLayers(this.scene)) {
     if (
       this.destroyed ||

@@ -1,11 +1,13 @@
 import { composeTransform, invertMatrix, multiplyMatrices, transformPoint, type Matrix2D } from '../matrix'
 import { type Container, type Glass } from '../scene'
 
+/** Flattened container with the world transform used for hit testing. */
 export type FlattenedContainer = {
   container: Container
   transform: Matrix2D
 }
 
+/** Cached geometry and transform data for pointer interaction with one glass. */
 export type GlassInteractionEntry = {
   glass: Glass
   container: Container
@@ -19,12 +21,14 @@ export type GlassInteractionEntry = {
   cornerTransitionSpeed: number
 }
 
+/** Canvas-relative pointer coordinates paired with the original DOM event. */
 export type PointerSnapshot = {
   nativeEvent: PointerEvent
   canvasX: number
   canvasY: number
 }
 
+/** Mutable pointer interaction state tracked per native pointer id. */
 export type PointerState = {
   hoveredGlass: Glass | null
   capturedGlass: Glass | null
@@ -33,18 +37,22 @@ export type PointerState = {
   lastSnapshot: PointerSnapshot | null
 }
 
+/** Restricts a number to an inclusive range. */
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
 
+/** Computes a superellipse-style length used by the rounded glass SDF. */
 function squircleLength(x: number, y: number) {
   return (x ** 4 + y ** 4) ** 0.25
 }
 
+/** Computes Euclidean length used by the circular corner fallback. */
 function circularLength(x: number, y: number) {
   return Math.hypot(x, y)
 }
 
+/** Signed distance to a rounded rectangle with squircle-to-circle blending. */
 function sdRoundRect(
   localX: number,
   localY: number,
@@ -67,10 +75,12 @@ function sdRoundRect(
   return cornerDistance + Math.min(Math.max(qx, qy), 0) - clampedRadius
 }
 
+/** Converts a 2D matrix into the CSS matrix() transform syntax. */
 export function matrixToCssTransform(matrix: Matrix2D) {
   return `matrix(${matrix.a}, ${matrix.b}, ${matrix.c}, ${matrix.d}, ${matrix.e}, ${matrix.f})`
 }
 
+/** Builds the ordered hit-test cache for every pointer-enabled glass. */
 export function createGlassInteractionEntries(containers: FlattenedContainer[]) {
   const entriesByGlass = new Map<Glass, GlassInteractionEntry>()
   const orderedEntries: GlassInteractionEntry[] = []
@@ -121,6 +131,7 @@ export function createGlassInteractionEntries(containers: FlattenedContainer[]) 
   }
 }
 
+/** Measures a canvas point in a glass interaction entry's local space. */
 export function measureGlassInteractionEntry(entry: GlassInteractionEntry, canvasX: number, canvasY: number) {
   const localPoint = transformPoint(entry.inverseTransform, canvasX, canvasY)
   const centeredX = localPoint.x - entry.halfWidth
@@ -140,6 +151,7 @@ export function measureGlassInteractionEntry(entry: GlassInteractionEntry, canva
   }
 }
 
+/** Returns the topmost glass interaction entry containing a canvas point. */
 export function hitTestGlassInteractionEntries(
   entries: GlassInteractionEntry[],
   canvasX: number,

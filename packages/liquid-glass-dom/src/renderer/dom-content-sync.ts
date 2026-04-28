@@ -23,8 +23,10 @@ import { getSortedGlasses, getSortedGlassHtml } from './scene-order'
 import { ContentDataLayout } from './shader-layouts'
 export type { FlattenedContainer } from './interaction'
 
+/** Typed GPU buffer used for glass content atlas entries. */
 type ContentDataBuffer = GpuStructArrayBuffer<GpuStructDefinition<typeof ContentDataLayout>>
 
+/** Chrome's experimental queue extension for copying DOM elements to textures. */
 type GPUQueueWithElementCopy = GPUQueue & {
   copyElementImageToTexture: (
     source: Element,
@@ -34,10 +36,12 @@ type GPUQueueWithElementCopy = GPUQueue & {
   ) => void
 }
 
+/** Paint event payload emitted by canvas layout subtree updates. */
 type CanvasPaintEvent = Event & {
   changedElements?: readonly Element[]
 }
 
+/** Runtime texture and transform state for one scene-attached HTML node. */
 export type SceneHtmlEntry = {
   html: Html
   texture: GPUTexture | null
@@ -54,11 +58,13 @@ export type SceneHtmlEntry = {
   inverseTransform: Matrix2D | null
 }
 
+/** Storage-buffer range for the HTML content entries attached to one glass. */
 type GlassContentRange = {
   start: number
   count: number
 }
 
+/** Previous atlas location and copied size used when copying forward on repack. */
 type PreviousGlassContentAtlasEntry = {
   copiedDeviceWidth: number
   copiedDeviceHeight: number
@@ -66,11 +72,13 @@ type PreviousGlassContentAtlasEntry = {
   atlasY: number
 }
 
+/** Dependencies needed by DOM content syncing without owning the renderer. */
 type DomContentSyncOptions = {
   targetCanvas: HTMLCanvasElement
   getCurrentDpr: () => number
 }
 
+/** Returns whether a paint event changed any managed HTML host or descendant. */
 function changedElementsIncludeHost(changedElements: readonly Element[], hosts: Set<HTMLDivElement>) {
   for (const element of changedElements) {
     for (const host of hosts) {
@@ -83,6 +91,7 @@ function changedElementsIncludeHost(changedElements: readonly Element[], hosts: 
   return false
 }
 
+/** Mounts and updates a managed HTML host's transform and z-index. */
 function syncHtmlHost(host: HTMLDivElement, canvas: HTMLCanvasElement, transform: string, zIndex: string) {
   if (host.parentElement !== canvas) {
     canvas.append(host)
@@ -95,6 +104,7 @@ function syncHtmlHost(host: HTMLDivElement, canvas: HTMLCanvasElement, transform
   }
 }
 
+/** Reorders managed HTML hosts to match the renderer's visual ordering. */
 function syncHtmlHostDomOrder(canvas: HTMLCanvasElement, hostOrder: Map<Html, number>) {
   // Chrome's experimental layoutsubtree hit testing can follow canvas child order
   // even when the hosts have matching CSS z-index values, so keep DOM order in
@@ -119,6 +129,7 @@ function syncHtmlHostDomOrder(canvas: HTMLCanvasElement, hostOrder: Map<Html, nu
   }
 }
 
+/** Converts copied device pixels into the copied extent in local CSS pixels. */
 export function getCopiedCssSize(copiedDeviceSize: number, deviceSize: number, cssSize: number) {
   if (copiedDeviceSize <= 0 || deviceSize <= 0 || cssSize <= 0) {
     return 0
@@ -126,6 +137,7 @@ export function getCopiedCssSize(copiedDeviceSize: number, deviceSize: number, c
   return (copiedDeviceSize / deviceSize) * cssSize
 }
 
+/** Converts a local CSS coordinate to a texture UV scale factor. */
 export function getTextureUvScale(deviceSize: number, cssSize: number, textureSize: number) {
   if (deviceSize <= 0 || cssSize <= 0 || textureSize <= 0) {
     return 0
@@ -133,8 +145,11 @@ export function getTextureUvScale(deviceSize: number, cssSize: number, textureSi
   return deviceSize / cssSize / textureSize
 }
 
+/** Synchronizes DOM-backed HTML hosts, textures, atlases, and content buffers. */
 export class DomContentSync {
+  /** Hosts for scene-attached HTML nodes currently managed by the renderer. */
   readonly sceneHtmlHosts = new Set<HTMLDivElement>()
+  /** Hosts for glass-attached HTML nodes currently managed by the renderer. */
   readonly glassContentHosts = new Set<HTMLDivElement>()
 
   private device: GPUDevice | null = null
@@ -150,16 +165,20 @@ export class DomContentSync {
   private glassContentAtlasWidth = 0
   private glassContentAtlasHeight = 0
 
+  /** Creates a DOM content sync helper for one renderer canvas. */
   constructor(private readonly options: DomContentSyncOptions) {}
 
+  /** Current atlas texture for glass-attached HTML content, if any exists. */
   get atlasTexture() {
     return this.glassContentAtlas
   }
 
+  /** Binding resource for content entries, or null before GPU allocation. */
   get contentEntriesBindingResource() {
     return this.contentEntriesBuffer?.buffer ? this.contentEntriesBuffer.bindingResource : null
   }
 
+  /** Attaches GPU resources and creates the fallback content-entry buffer. */
   setDevice(device: GPUDevice, presentationFormat: GPUTextureFormat) {
     this.device = device
     this.presentationFormat = presentationFormat
@@ -172,6 +191,7 @@ export class DomContentSync {
     this.contentEntriesBuffer.ensureCapacity(0)
   }
 
+  /** Removes DOM hosts and destroys all GPU resources owned by this helper. */
   destroy() {
     for (const entry of this.sceneHtmlEntries.values()) {
       entry.texture?.destroy()
@@ -195,6 +215,7 @@ export class DomContentSync {
     this.contentEntriesBuffer = null
   }
 
+  /** Handles canvas paint events by copying changed DOM hosts into textures. */
   handlePaintEvent(event: Event) {
     if (!this.device) {
       return
@@ -220,6 +241,7 @@ export class DomContentSync {
     }
   }
 
+  /** Synchronizes managed HTML hosts and GPU content state with the scene. */
   sync(
     layers: TraversedSceneLayer[],
     containers: FlattenedContainer[],
@@ -230,14 +252,17 @@ export class DomContentSync {
     syncHtmlHostDomOrder(this.options.targetCanvas, hostOrder)
   }
 
+  /** Returns GPU state for a scene-attached HTML node. */
   getSceneHtmlEntry(html: Html) {
     return this.sceneHtmlEntries.get(html) ?? null
   }
 
+  /** Returns the storage-buffer range for a glass node's attached HTML. */
   getGlassContentRange(glass: Glass) {
     return this.glassContentRanges.get(glass) ?? null
   }
 
+  /** Removes one scene-attached HTML entry and optionally keeps its host mounted. */
   private removeSceneHtmlEntry(html: Html, keepHostMounted: boolean) {
     const entry = this.sceneHtmlEntries.get(html)
     if (!entry) {
@@ -252,6 +277,7 @@ export class DomContentSync {
     }
   }
 
+  /** Removes one glass-attached HTML entry and optionally keeps its host mounted. */
   private removeGlassContentEntry(html: Html, keepHostMounted: boolean) {
     const entry = this.glassContentEntries.get(html)
     if (!entry) {
@@ -265,6 +291,7 @@ export class DomContentSync {
     }
   }
 
+  /** Synchronizes textures and transforms for scene-attached HTML layers. */
   private syncSceneHtml(layers: TraversedSceneLayer[], hostOrder: Map<Html, number>) {
     const activeHtml = new Set<Html>()
     let layoutChanged = false
@@ -423,6 +450,7 @@ export class DomContentSync {
     }
   }
 
+  /** Synchronizes glass-attached HTML entries and atlas packing. */
   private syncGlassContent(containers: FlattenedContainer[], hostOrder: Map<Html, number>) {
     const activeContentHtml = new Set<Html>()
     const activeEntries: GlassContentEntry[] = []
@@ -667,6 +695,7 @@ export class DomContentSync {
     this.writeContentEntries(activeEntries)
   }
 
+  /** Writes glass content metadata into the storage buffer. */
   private writeContentEntries(entries: GlassContentEntry[]) {
     if (!this.contentEntriesBuffer) {
       return
@@ -702,6 +731,7 @@ export class DomContentSync {
     this.contentEntriesBuffer.upload(entries.length)
   }
 
+  /** Copies scene-attached HTML hosts into their individual textures. */
   private copySceneHtmlTextures() {
     if (!this.device || this.sceneHtmlEntries.size === 0) {
       this.needsSceneHtmlCopy = false
@@ -736,6 +766,7 @@ export class DomContentSync {
     return copiedAll
   }
 
+  /** Copies glass-attached HTML hosts into the shared content atlas. */
   private copyGlassContentAtlas() {
     if (!this.device || !this.glassContentAtlas || this.glassContentOrder.length === 0) {
       this.needsContentCopy = false

@@ -1,6 +1,7 @@
 import { Container, flattenSceneLayers, Glass, Html, Scene, type TraversedSceneLayer } from '../scene'
 import type { FlattenedContainer } from './interaction'
 
+/** Returns top-level render layers sorted by z-index and traversal order. */
 export function getSortedSceneLayers(scene: Scene) {
   return flattenSceneLayers(scene).sort((left, right) => {
     const leftZIndex = left.child.zIndex
@@ -9,6 +10,7 @@ export function getSortedSceneLayers(scene: Scene) {
   })
 }
 
+/** Returns a container's glass children sorted by z-index and child order. */
 export function getSortedGlasses(container: Container) {
   return container._children
     .map((glass, index) => ({ glass, index }))
@@ -16,6 +18,7 @@ export function getSortedGlasses(container: Container) {
     .map((entry) => entry.glass)
 }
 
+/** Returns a glass node's HTML children sorted by z-index and child order. */
 export function getSortedGlassHtml(glass: Glass) {
   return glass._children
     .map((html, index) => ({ html, index }))
@@ -23,6 +26,7 @@ export function getSortedGlassHtml(glass: Glass) {
     .map((entry) => entry.html)
 }
 
+/** Extracts flattened container layers for interaction and content sync. */
 export function getLayerContainers(layers: TraversedSceneLayer[]): FlattenedContainer[] {
   return layers
     .filter((entry): entry is TraversedSceneLayer & { child: Container } => entry.child instanceof Container)
@@ -32,6 +36,7 @@ export function getLayerContainers(layers: TraversedSceneLayer[]): FlattenedCont
     }))
 }
 
+/** Computes stable DOM/z-index order for all live HTML hosts in render order. */
 export function getHtmlHostOrder(layers: TraversedSceneLayer[]) {
   const order = new Map<Html, number>()
   let nextOrder = 1

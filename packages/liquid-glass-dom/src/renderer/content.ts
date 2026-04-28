@@ -1,8 +1,10 @@
 import type { Glass, Html } from '../scene'
 import type { Matrix2D } from '../matrix'
 
+/** Padding in atlas pixels around each HTML content copy to reduce edge bleeding. */
 export const CONTENT_ATLAS_PADDING = 1
 
+/** Runtime metadata for one HTML node packed into the glass content atlas. */
 export type GlassContentEntry = {
   html: Html
   glass: Glass
@@ -18,17 +20,20 @@ export type GlassContentEntry = {
   inverseTransform: Matrix2D
 }
 
+/** Pixel-space rectangle assigned to one content entry inside the atlas. */
 type ContentLayoutRect = {
   x: number
   y: number
 }
 
+/** Result of packing glass-attached HTML nodes into a single atlas texture. */
 export type ContentAtlasLayout = {
   width: number
   height: number
   rects: Map<Html, ContentLayoutRect>
 }
 
+/** Returns the smallest power of two greater than or equal to the value. */
 function nextPowerOfTwo(value: number) {
   let next = 1
   while (next < value) {
@@ -37,6 +42,10 @@ function nextPowerOfTwo(value: number) {
   return next
 }
 
+/**
+ * Buckets a required device-pixel size to the texture allocation size used for
+ * resize stability.
+ */
 export function getTextureBucketSize(requiredSize: number, maxTextureSize = Number.POSITIVE_INFINITY) {
   if (requiredSize > maxTextureSize) {
     throw new Error(`Texture size ${requiredSize} exceeds the maximum supported size ${maxTextureSize}.`)
@@ -45,6 +54,7 @@ export function getTextureBucketSize(requiredSize: number, maxTextureSize = Numb
   return Math.min(nextPowerOfTwo(Math.max(1, requiredSize)), maxTextureSize)
 }
 
+/** Attempts row-based packing for a fixed atlas width. */
 function tryPackContentAtlas(entries: GlassContentEntry[], atlasWidth: number) {
   const rects = new Map<Html, ContentLayoutRect>()
   let cursorX = 0
@@ -81,6 +91,10 @@ function tryPackContentAtlas(entries: GlassContentEntry[], atlasWidth: number) {
   }
 }
 
+/**
+ * Packs glass-attached HTML entries into a power-of-two atlas that fits within
+ * the device texture limit.
+ */
 export function packContentAtlas(entries: GlassContentEntry[], maxTextureSize: number): ContentAtlasLayout {
   if (entries.length === 0) {
     throw new Error('Cannot build a glass content atlas without any content entries.')

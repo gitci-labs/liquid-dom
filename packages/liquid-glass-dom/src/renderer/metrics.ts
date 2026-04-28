@@ -1,9 +1,13 @@
 import type { BackdropMetrics } from '../types'
 
+/** Width and height, in pixels, of the low-resolution backdrop metrics target. */
 export const BACKDROP_METRICS_SIZE = 32
+/** Required row stride for copying the metrics texture into a readback buffer. */
 export const BACKDROP_METRICS_BYTES_PER_ROW = 256
+/** Total byte size of the backdrop metrics readback buffer. */
 export const BACKDROP_METRICS_BUFFER_SIZE = BACKDROP_METRICS_BYTES_PER_ROW * BACKDROP_METRICS_SIZE
 
+/** Axis-aligned device-pixel bounds used to restrict metrics and blur work. */
 export type BoundsRect = {
   minX: number
   minY: number
@@ -11,10 +15,12 @@ export type BoundsRect = {
   maxY: number
 }
 
+/** Restricts a number to an inclusive range. */
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
 
+/** Creates an initially empty bounds accumulator. */
 export function createEmptyBounds(): BoundsRect {
   return {
     minX: Number.POSITIVE_INFINITY,
@@ -24,6 +30,7 @@ export function createEmptyBounds(): BoundsRect {
   }
 }
 
+/** Expands a bounds accumulator to include one point. */
 export function expandBounds(bounds: BoundsRect, x: number, y: number) {
   bounds.minX = Math.min(bounds.minX, x)
   bounds.minY = Math.min(bounds.minY, y)
@@ -31,6 +38,7 @@ export function expandBounds(bounds: BoundsRect, x: number, y: number) {
   bounds.maxY = Math.max(bounds.maxY, y)
 }
 
+/** Returns whether a bounds accumulator contains a finite non-empty area. */
 export function hasBounds(bounds: BoundsRect) {
   return (
     Number.isFinite(bounds.minX) &&
@@ -42,6 +50,7 @@ export function hasBounds(bounds: BoundsRect) {
   )
 }
 
+/** Computes a linearly interpolated percentile from a sorted numeric array. */
 function percentile(values: number[], p: number) {
   if (values.length === 0) {
     return 0
@@ -58,6 +67,10 @@ function percentile(values: number[], p: number) {
   return values[lower] + (values[upper] - values[lower]) * blend
 }
 
+/**
+ * Reads the mapped backdrop metrics buffer and summarizes color and luminance
+ * over visible pixels.
+ */
 export function parseBackdropMetrics(buffer: GPUBuffer): BackdropMetrics | null {
   const bytes = new Uint8Array(buffer.getMappedRange())
   const luminances: number[] = []

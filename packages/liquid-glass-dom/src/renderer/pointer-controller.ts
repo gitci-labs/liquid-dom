@@ -9,6 +9,7 @@ import {
   type PointerState,
 } from './interaction'
 
+/** Dependencies needed by the pointer controller without owning the renderer. */
 type PointerControllerOptions = {
   targetCanvas: HTMLCanvasElement
   renderer: GlassPointerEventInit['renderer']
@@ -18,6 +19,7 @@ type PointerControllerOptions = {
   getGlassContentHosts: () => Set<HTMLDivElement>
 }
 
+/** Returns whether an event's composed path contains one of the HTML hosts. */
 function eventTargetsHost(event: Event, hosts: Set<HTMLDivElement>) {
   const path = event.composedPath()
 
@@ -30,33 +32,41 @@ function eventTargetsHost(event: Event, hosts: Set<HTMLDivElement>) {
   return false
 }
 
+/** Owns glass pointer hit testing, hover state, capture state, and dispatch. */
 export class PointerController {
   private glassInteractionEntries = new Map<Glass, GlassInteractionEntry>()
   private glassInteractionOrder: GlassInteractionEntry[] = []
   private readonly pointerStates = new Map<number, PointerState>()
 
+  /** Native pointermove listener wired to the renderer canvas. */
   readonly handlePointerMove = (event: PointerEvent) => {
     this.handleNativePointerEvent('pointermove', event)
   }
 
+  /** Native pointerdown listener wired to the renderer canvas. */
   readonly handlePointerDown = (event: PointerEvent) => {
     this.handleNativePointerEvent('pointerdown', event)
   }
 
+  /** Native pointerup listener wired to the renderer canvas. */
   readonly handlePointerUp = (event: PointerEvent) => {
     this.handleNativePointerEvent('pointerup', event)
   }
 
+  /** Native pointercancel listener wired to the renderer canvas. */
   readonly handlePointerCancel = (event: PointerEvent) => {
     this.handleNativePointerEvent('pointercancel', event)
   }
 
+  /** Native pointerleave listener wired to the renderer canvas. */
   readonly handlePointerLeave = (event: PointerEvent) => {
     this.handleNativePointerEvent('pointerleave', event)
   }
 
+  /** Creates a pointer controller for one renderer canvas. */
   constructor(private readonly options: PointerControllerOptions) {}
 
+  /** Rebuilds hit-test entries after scene or layout changes. */
   syncInteractions(containers: Parameters<typeof createGlassInteractionEntries>[0]) {
     const previousEntries = this.glassInteractionEntries
     const { entriesByGlass, orderedEntries } = createGlassInteractionEntries(containers)
@@ -65,12 +75,14 @@ export class PointerController {
     this.handleRemovedInteractionTargets(previousEntries)
   }
 
+  /** Clears cached hit-test entries and pointer state. */
   clear() {
     this.glassInteractionEntries.clear()
     this.glassInteractionOrder = []
     this.pointerStates.clear()
   }
 
+  /** Returns existing pointer state or initializes one for a native pointer id. */
   private getPointerState(pointerId: number) {
     let state = this.pointerStates.get(pointerId)
     if (state) {
@@ -88,6 +100,7 @@ export class PointerController {
     return state
   }
 
+  /** Captures canvas-relative pointer coordinates for event dispatch. */
   private createPointerSnapshot(event: PointerEvent): PointerSnapshot {
     const bounds = this.options.targetCanvas.getBoundingClientRect()
     return {
@@ -97,6 +110,7 @@ export class PointerController {
     }
   }
 
+  /** Dispatches a synthetic glass pointer event and mirrors preventDefault. */
   private dispatchGlassPointerEvent(
     type: GlassPointerEventType,
     glass: Glass,
@@ -124,6 +138,7 @@ export class PointerController {
     }
   }
 
+  /** Sends enter/leave events when the hovered glass target changes. */
   private updateHoveredGlass(state: PointerState, nextEntry: GlassInteractionEntry | null, snapshot: PointerSnapshot) {
     const currentGlass = state.hoveredGlass
     const nextGlass = nextEntry?.glass ?? null
@@ -142,6 +157,7 @@ export class PointerController {
     }
   }
 
+  /** Releases native pointer capture when the canvas currently owns it. */
   private releaseNativePointerCapture(pointerId: number) {
     if (!this.options.targetCanvas.hasPointerCapture(pointerId)) {
       return
@@ -154,6 +170,7 @@ export class PointerController {
     }
   }
 
+  /** Removes idle pointer state after hover, capture, and press state are clear. */
   private cleanupPointerState(pointerId: number, state: PointerState) {
     if (state.hoveredGlass || state.capturedGlass || state.pressedGlass) {
       return
@@ -162,11 +179,13 @@ export class PointerController {
     this.pointerStates.delete(pointerId)
   }
 
+  /** Flushes scene sync after handling an event and prunes idle pointer state. */
   private finishPointerEvent(pointerId: number, state: PointerState) {
     this.options.flushSceneContentSync()
     this.cleanupPointerState(pointerId, state)
   }
 
+  /** Cancels or retargets pointer state when glass nodes leave the scene. */
   private handleRemovedInteractionTargets(previousEntries: Map<Glass, GlassInteractionEntry>) {
     for (const [pointerId, state] of this.pointerStates) {
       const snapshot = state.lastSnapshot
@@ -203,6 +222,7 @@ export class PointerController {
     }
   }
 
+  /** Handles native pointer events and dispatches the matching glass events. */
   private handleNativePointerEvent(type: GlassPointerEventType, event: PointerEvent) {
     if (this.options.isDestroyed()) {
       return

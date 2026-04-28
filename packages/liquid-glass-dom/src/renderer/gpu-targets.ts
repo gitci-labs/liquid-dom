@@ -1,5 +1,6 @@
 import { GPU_TEXTURE_USAGE } from './gpu-constants'
 
+/** Texture set used by blur passes and scene ping-pong composition. */
 export type RenderTargetSet = {
   blurPing: GPUTexture
   blur: GPUTexture
@@ -7,6 +8,7 @@ export type RenderTargetSet = {
   sceneB: GPUTexture
 }
 
+/** Rectangular texture copy in source and destination pixel coordinates. */
 export type TextureCopyRegion = {
   sourceX: number
   sourceY: number
@@ -16,6 +18,7 @@ export type TextureCopyRegion = {
   height: number
 }
 
+/** Creates a render target compatible with sampling, rendering, and copies. */
 export function createRenderTarget(
   device: GPUDevice,
   format: GPUTextureFormat,
@@ -37,6 +40,7 @@ export function createRenderTarget(
   })
 }
 
+/** Destroys every texture in a render target set. */
 export function destroyTargets(targets: RenderTargetSet | null) {
   if (!targets) {
     return
@@ -48,6 +52,7 @@ export function destroyTargets(targets: RenderTargetSet | null) {
   targets.sceneB.destroy()
 }
 
+/** Copies a positive-size rectangular region between two textures. */
 export function copyTextureRegion(
   encoder: GPUCommandEncoder,
   source: GPUTexture,
