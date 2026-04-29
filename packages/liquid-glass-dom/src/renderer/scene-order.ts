@@ -1,4 +1,13 @@
-import { Container, flattenSceneLayers, Glass, Html, Scene, type TraversedSceneLayer } from '../scene'
+import {
+  Container,
+  flattenContainerGlasses,
+  flattenGlassHtml,
+  flattenSceneLayers,
+  Glass,
+  Html,
+  Scene,
+  type TraversedSceneLayer,
+} from '../scene'
 import type { FlattenedContainer } from './interaction'
 
 /** Returns top-level render layers sorted by z-index and traversal order. */
@@ -10,20 +19,18 @@ export function getSortedSceneLayers(scene: Scene) {
   })
 }
 
-/** Returns a container's glass children sorted by z-index and child order. */
-export function getSortedGlasses(container: Container) {
-  return container._children
-    .map((glass, index) => ({ glass, index }))
-    .sort((left, right) => left.glass.zIndex - right.glass.zIndex || left.index - right.index)
-    .map((entry) => entry.glass)
+/** Returns a container's flattened glass children sorted by z-index and traversal order. */
+export function getSortedGlassLayers(container: Container) {
+  return flattenContainerGlasses(container).sort(
+    (left, right) => left.glass.zIndex - right.glass.zIndex || left.traversalIndex - right.traversalIndex,
+  )
 }
 
-/** Returns a glass node's HTML children sorted by z-index and child order. */
-export function getSortedGlassHtml(glass: Glass) {
-  return glass._children
-    .map((html, index) => ({ html, index }))
-    .sort((left, right) => left.html.zIndex - right.html.zIndex || left.index - right.index)
-    .map((entry) => entry.html)
+/** Returns a glass node's flattened HTML children sorted by z-index and traversal order. */
+export function getSortedGlassHtmlLayers(glass: Glass) {
+  return flattenGlassHtml(glass).sort(
+    (left, right) => left.html.zIndex - right.html.zIndex || left.traversalIndex - right.traversalIndex,
+  )
 }
 
 /** Extracts flattened container layers for interaction and content sync. */
@@ -50,8 +57,9 @@ export function getHtmlHostOrder(layers: TraversedSceneLayer[]) {
       continue
     }
 
-    for (const glass of getSortedGlasses(layer.child)) {
-      for (const html of getSortedGlassHtml(glass)) {
+    for (const glassLayer of getSortedGlassLayers(layer.child)) {
+      for (const htmlLayer of getSortedGlassHtmlLayers(glassLayer.glass)) {
+        const html = htmlLayer.html
         if (html.width > 0 && html.height > 0) {
           order.set(html, nextOrder)
           nextOrder += 1

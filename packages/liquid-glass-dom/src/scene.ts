@@ -1,5 +1,5 @@
 import type { GlassPointerEvent, GlassPointerEventType } from './events'
-import { composeTransform, type Matrix2D } from './matrix'
+import { composeTransform, identityMatrix, multiplyMatrices, type Matrix2D } from './matrix'
 import type { Point, RgbaColor, SurfaceProfile, Transform } from './types'
 
 /**
@@ -60,19 +60,56 @@ export type ContainerInit = Partial<Transform> & {
   zIndex?: number
 }
 
-type SceneChild = Container | Html
-type ParentNode = Scene | Container | Glass
+/**
+ * Constructor options for a {@link Group}.
+ */
+export type GroupInit = Partial<Transform>
+
+type SceneChild = Container | Html | Group
+type RenderSceneChild = Container | Html
+type ContainerChild = Glass | Group
+type GlassChild = Html | Group
+type GroupChild = Container | Glass | Html | Group
+type ParentNode = Scene | Container | Glass | Group
 type SceneMutationListener = () => void
 
+/** Flattened container with its composed world transform and stable traversal order. */
 type TraversedContainer = {
+  /** Container node reached through the scene hierarchy. */
   container: Container
+  /** Container transform composed with any ancestor groups. */
   transform: Matrix2D
+  /** Stable preorder index among flattened containers. */
   traversalIndex: number
 }
 
+/** Flattened scene render layer with its composed world transform and stable traversal order. */
 export type TraversedSceneLayer = {
-  child: SceneChild
+  /** Renderable scene node reached through the scene hierarchy. */
+  child: RenderSceneChild
+  /** Scene-layer transform composed with any ancestor groups. */
   transform: Matrix2D
+  /** Stable preorder index among flattened scene layers. */
+  traversalIndex: number
+}
+
+/** Flattened glass child with its transform relative to the owning container. */
+export type TraversedGlass = {
+  /** Glass node reached through the container hierarchy. */
+  glass: Glass
+  /** Glass transform composed with any ancestor groups inside the container. */
+  transform: Matrix2D
+  /** Stable preorder index among flattened glass nodes. */
+  traversalIndex: number
+}
+
+/** Flattened HTML child with its transform relative to the owning glass. */
+export type TraversedHtml = {
+  /** HTML node reached through the glass hierarchy. */
+  html: Html
+  /** HTML transform composed with any ancestor groups inside the glass. */
+  transform: Matrix2D
+  /** Stable preorder index among flattened glass HTML nodes. */
   traversalIndex: number
 }
 
@@ -135,16 +172,64 @@ function removeFromParent(node: { _parent: ParentNode | null }) {
 
   const scene = findScene(node)
 
-  if (parent instanceof Scene) {
-    parent._children = parent._children.filter((child) => child !== node)
-  } else if (parent instanceof Container) {
-    parent._children = parent._children.filter((child) => child !== node)
-  } else {
-    parent._children = parent._children.filter((child) => child !== node)
-  }
+  parent._children = parent._children.filter((child) => child !== node)
 
   node._parent = null
   scene?._notifyMutation()
+}
+
+/** Throws when adding a group under the target parent would create a scene graph cycle. */
+function ensureNoCycle(parent: ParentNode, child: Group) {
+  if (parent === child) {
+    throw new Error('A Group cannot be added to itself.')
+  }
+
+  let current: ParentNode | null = parent
+  while (current) {
+    if (current === child) {
+      throw new Error('A Group cannot be added to one of its descendants.')
+    }
+    current = '_parent' in current ? current._parent : null
+  }
+}
+
+/** Returns the nearest non-group parent that defines what child node types a group may contain. */
+function getGroupContext(parent: ParentNode | null): Scene | Container | Glass | null {
+  let current = parent
+  while (current instanceof Group) {
+    current = current._parent
+  }
+
+  return current
+}
+
+/** Throws when a child cannot be inserted in a group for the provided parent context. */
+function validateGroupChildForContext(child: GroupChild, context: Scene | Container | Glass | null) {
+  if (!context || child instanceof Group) {
+    return
+  }
+
+  if (context instanceof Scene && (child instanceof Container || child instanceof Html)) {
+    return
+  }
+  if (context instanceof Container && child instanceof Glass) {
+    return
+  }
+  if (context instanceof Glass && child instanceof Html) {
+    return
+  }
+
+  throw new Error('A Group child must match the node type accepted by its nearest non-group parent.')
+}
+
+/** Recursively validates all descendants of a group against the provided parent context. */
+function validateGroupForContext(group: Group, context: Scene | Container | Glass | null) {
+  for (const child of group._children) {
+    validateGroupChildForContext(child, context)
+    if (child instanceof Group) {
+      validateGroupForContext(child, context)
+    }
+  }
 }
 
 /**
@@ -172,7 +257,7 @@ export class Html implements Transform {
   private _zIndex = 0
   private _element: HTMLElement | null = null
   _elementVersion = 0
-  _parent: Scene | Glass | null = null
+  _parent: Scene | Glass | Group | null = null
 
   constructor(options: HtmlInit = {}) {
     this.host = document.createElement('div')
@@ -363,8 +448,8 @@ export class Glass extends EventTarget implements Transform {
     notifySceneMutation(this)
   }
 
-  _parent: Container | null = null
-  _children: Html[] = []
+  _parent: Container | Group | null = null
+  _children: GlassChild[] = []
 
   /**
    * Creates a glass shape descriptor.
@@ -393,8 +478,13 @@ export class Glass extends EventTarget implements Transform {
     }
   }
 
-  /** Adds an HTML child to this glass, reparenting it if needed. */
-  add(child: Html) {
+  /** Adds an HTML child or transform-only group to this glass, reparenting it if needed. */
+  add<T extends GlassChild>(child: T): T {
+    if (child instanceof Group) {
+      ensureNoCycle(this, child)
+      validateGroupForContext(child, this)
+    }
+
     removeFromParent(child)
     this._children.push(child)
     child._parent = this
@@ -507,8 +597,8 @@ export class Container implements Transform {
   /** Draw order among scene layers; higher values render later. */
   zIndex = 0
 
-  _parent: Scene | null = null
-  _children: Glass[] = []
+  _parent: Scene | Group | null = null
+  _children: ContainerChild[] = []
 
   /**
    * Creates a glass rendering layer with optical properties shared by its child shapes.
@@ -577,9 +667,14 @@ export class Container implements Transform {
   }
 
   /**
-   * Adds a glass shape to this container, reparenting it if needed.
+   * Adds a glass shape or transform-only group to this container, reparenting it if needed.
    */
-  add(child: Glass) {
+  add<T extends ContainerChild>(child: T): T {
+    if (child instanceof Group) {
+      ensureNoCycle(this, child)
+      validateGroupForContext(child, this)
+    }
+
     removeFromParent(child)
     this._children.push(child)
     child._parent = this
@@ -588,7 +683,64 @@ export class Container implements Transform {
   }
 
   /**
-   * Detaches this container from its parent scene, if attached.
+   * Detaches this container from its parent scene or group, if attached.
+   */
+  remove() {
+    removeFromParent(this)
+  }
+}
+
+/**
+ * A transform-only hierarchy node that can be inserted anywhere in the scene graph.
+ */
+export class Group implements Transform {
+  /** Horizontal translation in CSS pixels. */
+  x = 0
+  /** Vertical translation in CSS pixels. */
+  y = 0
+  /** Horizontal scale factor. */
+  scaleX = 1
+  /** Vertical scale factor. */
+  scaleY = 1
+  /** Clockwise rotation in radians. */
+  rotation = 0
+  /** Local-space transform origin in CSS pixels. */
+  origin: Point = { x: 0, y: 0 }
+
+  _parent: Scene | Container | Glass | Group | null = null
+  _children: GroupChild[] = []
+
+  /**
+   * Creates a transform-only group node.
+   */
+  constructor(options: GroupInit = {}) {
+    applyTransformDefaults(this, options)
+  }
+
+  /**
+   * Adds a child node, reparenting it if needed.
+   * Throws if the child type is invalid for this group's nearest non-group parent.
+   */
+  add<T extends GroupChild>(child: T): T {
+    if (child instanceof Group) {
+      ensureNoCycle(this, child)
+    }
+
+    const context = getGroupContext(this)
+    validateGroupChildForContext(child, context)
+    if (child instanceof Group) {
+      validateGroupForContext(child, context)
+    }
+
+    removeFromParent(child)
+    this._children.push(child)
+    child._parent = this
+    notifySceneMutation(child)
+    return child
+  }
+
+  /**
+   * Detaches this group from its parent, if attached.
    */
   remove() {
     removeFromParent(this)
@@ -603,9 +755,14 @@ export class Scene {
   _listeners = new Set<SceneMutationListener>()
 
   /**
-   * Adds a container or HTML layer to the scene, reparenting it if needed.
+   * Adds a container, HTML layer, or transform-only group to the scene, reparenting it if needed.
    */
   add<T extends SceneChild>(child: T): T {
+    if (child instanceof Group) {
+      ensureNoCycle(this, child)
+      validateGroupForContext(child, this)
+    }
+
     removeFromParent(child)
     this._children.push(child)
     child._parent = this
@@ -628,14 +785,87 @@ export class Scene {
 }
 
 /**
- * Flattens direct scene children into render layers with composed transforms.
+ * Flattens scene children into render layers with transform-only groups composed away.
  */
 export function flattenSceneLayers(scene: Scene): TraversedSceneLayer[] {
-  return scene._children.map((child, traversalIndex) => ({
-    child,
-    transform: composeTransform(child),
-    traversalIndex,
-  }))
+  const result: TraversedSceneLayer[] = []
+
+  function visit(children: readonly GroupChild[], parentTransform: Matrix2D) {
+    for (const child of children) {
+      const transform = multiplyMatrices(parentTransform, composeTransform(child))
+      if (child instanceof Group) {
+        visit(child._children, transform)
+        continue
+      }
+
+      if (child instanceof Container || child instanceof Html) {
+        result.push({
+          child,
+          transform,
+          traversalIndex: result.length,
+        })
+      }
+    }
+  }
+
+  visit(scene._children, identityMatrix())
+  return result
+}
+
+/**
+ * Flattens a container's glass hierarchy with transform-only groups composed into each glass transform.
+ */
+export function flattenContainerGlasses(container: Container): TraversedGlass[] {
+  const result: TraversedGlass[] = []
+
+  function visit(children: readonly GroupChild[], parentTransform: Matrix2D) {
+    for (const child of children) {
+      const transform = multiplyMatrices(parentTransform, composeTransform(child))
+      if (child instanceof Group) {
+        visit(child._children, transform)
+        continue
+      }
+
+      if (child instanceof Glass) {
+        result.push({
+          glass: child,
+          transform,
+          traversalIndex: result.length,
+        })
+      }
+    }
+  }
+
+  visit(container._children, identityMatrix())
+  return result
+}
+
+/**
+ * Flattens a glass node's HTML hierarchy with transform-only groups composed into each HTML transform.
+ */
+export function flattenGlassHtml(glass: Glass): TraversedHtml[] {
+  const result: TraversedHtml[] = []
+
+  function visit(children: readonly GroupChild[], parentTransform: Matrix2D) {
+    for (const child of children) {
+      const transform = multiplyMatrices(parentTransform, composeTransform(child))
+      if (child instanceof Group) {
+        visit(child._children, transform)
+        continue
+      }
+
+      if (child instanceof Html) {
+        result.push({
+          html: child,
+          transform,
+          traversalIndex: result.length,
+        })
+      }
+    }
+  }
+
+  visit(glass._children, identityMatrix())
+  return result
 }
 
 /**

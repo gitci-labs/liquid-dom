@@ -1,5 +1,4 @@
 import {
-  composeTransform,
   invertMatrix,
   multiplyMatrices,
   scaleOutputMatrix,
@@ -19,7 +18,7 @@ import {
 } from './gpu-layout'
 import { copyTextureRegion } from './gpu-targets'
 import { matrixToCssTransform, type FlattenedContainer } from './interaction'
-import { getSortedGlasses, getSortedGlassHtml } from './scene-order'
+import { getSortedGlassHtmlLayers, getSortedGlassLayers } from './scene-order'
 import { ContentDataLayout } from './shader-layouts'
 export type { FlattenedContainer } from './interaction'
 
@@ -475,25 +474,27 @@ export class DomContentSync {
     for (const containerEntry of containers) {
       const containerTransform = containerEntry.transform
 
-      for (const glass of getSortedGlasses(containerEntry.container)) {
+      for (const glassLayer of getSortedGlassLayers(containerEntry.container)) {
+        const glass = glassLayer.glass
         if (glass.width <= 0 || glass.height <= 0) {
           continue
         }
 
-        const glassTransform = multiplyMatrices(containerTransform, composeTransform(glass))
+        const glassTransform = multiplyMatrices(containerTransform, glassLayer.transform)
         const contentStart = activeEntries.length
 
-        for (const html of getSortedGlassHtml(glass)) {
+        for (const htmlLayer of getSortedGlassHtmlLayers(glass)) {
+          const html = htmlLayer.html
           if (html.width <= 0 || html.height <= 0) {
             continue
           }
 
-          const inverseTransform = invertMatrix(composeTransform(html))
+          const inverseTransform = invertMatrix(htmlLayer.transform)
           this.glassContentHosts.add(html.host)
           syncHtmlHost(
             html.host,
             this.options.targetCanvas,
-            matrixToCssTransform(multiplyMatrices(glassTransform, composeTransform(html))),
+            matrixToCssTransform(multiplyMatrices(glassTransform, htmlLayer.transform)),
             String(hostOrder.get(html) ?? 0),
           )
 

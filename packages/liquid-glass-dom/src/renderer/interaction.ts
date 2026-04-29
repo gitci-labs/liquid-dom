@@ -1,5 +1,5 @@
-import { composeTransform, invertMatrix, multiplyMatrices, transformPoint, type Matrix2D } from '../matrix'
-import { type Container, type Glass } from '../scene'
+import { invertMatrix, multiplyMatrices, transformPoint, type Matrix2D } from '../matrix'
+import { flattenContainerGlasses, type Container, type Glass } from '../scene'
 
 /** Flattened container with the world transform used for hit testing. */
 export type FlattenedContainer = {
@@ -88,13 +88,13 @@ export function createGlassInteractionEntries(containers: FlattenedContainer[]) 
   for (let containerOrder = 0; containerOrder < containers.length; containerOrder += 1) {
     const entry = containers[containerOrder]
 
-    for (let glassOrder = 0; glassOrder < entry.container._children.length; glassOrder += 1) {
-      const glass = entry.container._children[glassOrder]
+    for (const glassLayer of flattenContainerGlasses(entry.container)) {
+      const glass = glassLayer.glass
       if (!glass.pointerEvents || glass.width <= 0 || glass.height <= 0) {
         continue
       }
 
-      const transform = multiplyMatrices(entry.transform, composeTransform(glass))
+      const transform = multiplyMatrices(entry.transform, glassLayer.transform)
       const inverseTransform = invertMatrix(transform)
       if (!inverseTransform) {
         continue
@@ -104,7 +104,7 @@ export function createGlassInteractionEntries(containers: FlattenedContainer[]) 
         glass,
         container: entry.container,
         containerOrder,
-        glassOrder,
+        glassOrder: glassLayer.traversalIndex,
         transform,
         inverseTransform,
         halfWidth: glass.width * 0.5,

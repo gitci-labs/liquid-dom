@@ -1,5 +1,4 @@
 import {
-  composeTransform,
   getMinimumScale,
   invertMatrix,
   multiplyMatrices,
@@ -50,7 +49,7 @@ import {
 import {
   getHtmlHostOrder,
   getLayerContainers,
-  getSortedGlasses,
+  getSortedGlassLayers,
   getSortedSceneLayers,
 } from './scene-order'
 import { Container, Html, Scene } from '../scene'
@@ -591,15 +590,16 @@ export class Renderer {
   /** Packs visible glass shapes into the storage buffer and accumulates bounds. */
   private packShapes(container: Container, containerTransform: Matrix2D): PackedShapesResult {
     const dpr = this.currentDpr
-    const glasses = getSortedGlasses(container)
+    const glassLayers = getSortedGlassLayers(container)
     const bounds = createEmptyBounds()
     let activeCount = 0
 
-    this.ensureShapesBuffer(glasses.length)
+    this.ensureShapesBuffer(glassLayers.length)
     const shapesBuffer = this.shapesBuffer
 
-    for (const glass of glasses) {
-      const worldCss = multiplyMatrices(containerTransform, composeTransform(glass))
+    for (const glassLayer of glassLayers) {
+      const glass = glassLayer.glass
+      const worldCss = multiplyMatrices(containerTransform, glassLayer.transform)
       const worldDevice = scaleOutputMatrix(worldCss, dpr)
       const inverse = invertMatrix(worldDevice)
       if (!inverse) {
