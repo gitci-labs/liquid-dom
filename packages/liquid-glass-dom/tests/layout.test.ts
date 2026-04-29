@@ -10,7 +10,12 @@ import {
   Overlay,
   Transform,
 } from '../src/layout'
-import { flattenContainerGlasses, flattenSceneLayers } from '../src/scene'
+import {
+  flattenContainerGlasses,
+  flattenGlassHtml,
+  flattenSceneLayers,
+  Glass as SceneGlass,
+} from '../src/scene'
 
 describe('layout UI tree', () => {
   it('positions fixed-size HTML leaves from layout', () => {
@@ -88,15 +93,21 @@ describe('layout UI tree', () => {
       backgroundContent.layoutNode,
       backgroundDecoration.layoutNode,
     ])
-    expect(background.sceneNode._children).toEqual([
-      backgroundDecoration.sceneNode,
-      backgroundContent.sceneNode,
-    ])
     expect(overlay.layoutNode.children).toEqual([
       overlayContent.layoutNode,
       overlayDecoration.layoutNode,
     ])
-    expect(overlay.sceneNode._children).toEqual([
+
+    const backgroundGlass = new SceneGlass()
+    backgroundGlass.add(background.sceneNode)
+    expect(flattenGlassHtml(backgroundGlass).map((layer) => layer.html)).toEqual([
+      backgroundDecoration.sceneNode,
+      backgroundContent.sceneNode,
+    ])
+
+    const overlayGlass = new SceneGlass()
+    overlayGlass.add(overlay.sceneNode)
+    expect(flattenGlassHtml(overlayGlass).map((layer) => layer.html)).toEqual([
       overlayContent.sceneNode,
       overlayDecoration.sceneNode,
     ])

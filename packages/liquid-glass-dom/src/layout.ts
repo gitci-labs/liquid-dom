@@ -18,6 +18,7 @@ import {
   Group as SceneGroup,
   Html as SceneHtml,
   Scene as GlassScene,
+  StackingContext as SceneStackingContext,
   type ContainerInit,
   type GlassInit,
 } from './scene'
@@ -48,7 +49,7 @@ import type {
 } from 'laymeout'
 import type { Point, RgbaColor, SurfaceProfile, Transform as SceneTransform } from './types'
 
-type SceneNode = SceneContainer | SceneGlass | SceneGroup | SceneHtml
+type SceneNode = SceneContainer | SceneGlass | SceneGroup | SceneStackingContext | SceneHtml
 type SceneParent = GlassScene | SceneNode
 type UiParent = LayoutScene | UiNode
 type FixedMeasureState = {
@@ -433,11 +434,13 @@ export class VStack extends UiNode<StackNode, SceneGroup> {
 }
 
 /**
- * Z-stack layout backed by a transform-only scene group.
+ * Z-stack layout backed by a local stacking context.
  */
-export class ZStack extends UiNode<ZStackNode, SceneGroup> {
+export class ZStack extends UiNode<ZStackNode, SceneStackingContext> {
+  private readonly sceneSlots = new Map<LayoutUiNode, SceneStackingContext>()
+
   constructor(options: ZStackOptions = {}) {
-    super(createZStack(options), new SceneGroup())
+    super(createZStack(options), new SceneStackingContext())
   }
 
   get alignment(): Alignment {
@@ -446,6 +449,40 @@ export class ZStack extends UiNode<ZStackNode, SceneGroup> {
 
   set alignment(value: Alignment) {
     this.layoutNode.alignment = value
+  }
+
+  override _detachChild(child: LayoutUiNode) {
+    const slot = this.sceneSlots.get(child)
+    super._detachChild(child)
+    slot?.remove()
+    this.sceneSlots.delete(child)
+    this.syncSlotZIndices()
+  }
+
+  protected override addChild<T extends LayoutUiNode>(child: T): T {
+    const added = super.addChild(child)
+    this.syncSlotZIndices()
+    return added
+  }
+
+  protected override attachChildScene(child: LayoutUiNode) {
+    if (!child.sceneNode) {
+      return
+    }
+
+    const slot = new SceneStackingContext()
+    this.sceneSlots.set(child, slot)
+    attachSceneChild(this.sceneNode, slot)
+    attachSceneChild(slot, child.sceneNode)
+  }
+
+  private syncSlotZIndices() {
+    for (const [index, child] of this._children.entries()) {
+      const slot = this.sceneSlots.get(child)
+      if (slot) {
+        slot.zIndex = index
+      }
+    }
   }
 }
 
@@ -547,9 +584,11 @@ export class Padding extends SingleChildUiNode<PaddingNode, SceneGroup> {
   }
 }
 
-abstract class DecorationUiNode extends UiNode<LaymeoutNode, SceneGroup> {
+abstract class DecorationUiNode extends UiNode<LaymeoutNode, SceneStackingContext> {
   private readonly emptyContent = createNoop()
   private readonly emptyDecoration = createNoop()
+  private readonly contentSlot = new SceneStackingContext()
+  private readonly decorationSlot = new SceneStackingContext()
   private content: LayoutUiNode | null = null
   private decoration: LayoutUiNode | null = null
 
@@ -557,7 +596,10 @@ abstract class DecorationUiNode extends UiNode<LaymeoutNode, SceneGroup> {
     layoutNode: LaymeoutNode,
     private readonly sceneOrder: 'background' | 'overlay',
   ) {
-    super(layoutNode, new SceneGroup())
+    super(layoutNode, new SceneStackingContext())
+    this.syncSlotZIndices()
+    attachSceneChild(this.sceneNode, this.contentSlot)
+    attachSceneChild(this.sceneNode, this.decorationSlot)
   }
 
   override add<T extends LayoutUiNode>(child: T): T {
@@ -644,21 +686,22 @@ abstract class DecorationUiNode extends UiNode<LaymeoutNode, SceneGroup> {
     this.content?.sceneNode?.remove()
     this.decoration?.sceneNode?.remove()
 
-    const ordered =
-      this.sceneOrder === 'background'
-        ? [this.decoration, this.content]
-        : [this.content, this.decoration]
-
-    for (const child of ordered) {
-      if (child?.sceneNode) {
-        attachSceneChild(this.sceneNode, child.sceneNode)
-      }
+    if (this.content?.sceneNode) {
+      attachSceneChild(this.contentSlot, this.content.sceneNode)
     }
+    if (this.decoration?.sceneNode) {
+      attachSceneChild(this.decorationSlot, this.decoration.sceneNode)
+    }
+  }
+
+  private syncSlotZIndices() {
+    this.contentSlot.zIndex = this.sceneOrder === 'background' ? 1 : 0
+    this.decorationSlot.zIndex = this.sceneOrder === 'background' ? 0 : 1
   }
 }
 
 /**
- * Background decoration layout backed by a transform-only scene group.
+ * Background decoration layout backed by a local stacking context.
  */
 export class Background extends DecorationUiNode {
   constructor(options: DecorationOptions = {}) {
@@ -669,7 +712,7 @@ export class Background extends DecorationUiNode {
 }
 
 /**
- * Overlay decoration layout backed by a transform-only scene group.
+ * Overlay decoration layout backed by a local stacking context.
  */
 export class Overlay extends DecorationUiNode {
   constructor(options: DecorationOptions = {}) {

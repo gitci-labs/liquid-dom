@@ -121,7 +121,6 @@ export function createGlassInteractionEntries(containers: FlattenedContainer[]) 
   orderedEntries.sort(
     (left, right) =>
       left.containerOrder - right.containerOrder ||
-      left.glass.zIndex - right.glass.zIndex ||
       left.glassOrder - right.glassOrder,
   )
 

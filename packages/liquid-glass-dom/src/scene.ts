@@ -65,6 +65,13 @@ export type ContainerInit = Partial<Transform> & {
  */
 export type GroupInit = Partial<Transform>
 
+/**
+ * Constructor options for a {@link StackingContext}.
+ */
+export type StackingContextInit = GroupInit & {
+  zIndex?: number
+}
+
 type SceneChild = Container | Html | Group
 type RenderSceneChild = Container | Html
 type ContainerChild = Glass | Group
@@ -748,6 +755,38 @@ export class Group implements Transform {
 }
 
 /**
+ * A transform-only hierarchy node that creates a local z-index sorting context.
+ */
+export class StackingContext extends Group {
+  private _zIndex = 0
+
+  /**
+   * Creates a local stacking context.
+   */
+  constructor(options: StackingContextInit = {}) {
+    super(options)
+
+    if (options.zIndex !== undefined) {
+      this._zIndex = options.zIndex
+    }
+  }
+
+  /** Draw order of this entire subtree in the nearest parent stacking context. */
+  get zIndex() {
+    return this._zIndex
+  }
+
+  set zIndex(value: number) {
+    if (this._zIndex === value) {
+      return
+    }
+
+    this._zIndex = value
+    notifySceneMutation(this)
+  }
+}
+
+/**
  * Root node for a glass scene graph.
  */
 export class Scene {
@@ -755,7 +794,7 @@ export class Scene {
   _listeners = new Set<SceneMutationListener>()
 
   /**
-   * Adds a container, HTML layer, or transform-only group to the scene, reparenting it if needed.
+   * Adds a container, HTML layer, transform-only group, or stacking context to the scene.
    */
   add<T extends SceneChild>(child: T): T {
     if (child instanceof Group) {
@@ -785,87 +824,191 @@ export class Scene {
 }
 
 /**
- * Flattens scene children into render layers with transform-only groups composed away.
+ * Flattens scene children into final paint order with group transforms composed away.
  */
 export function flattenSceneLayers(scene: Scene): TraversedSceneLayer[] {
   const result: TraversedSceneLayer[] = []
 
-  function visit(children: readonly GroupChild[], parentTransform: Matrix2D) {
-    for (const child of children) {
-      const transform = multiplyMatrices(parentTransform, composeTransform(child))
-      if (child instanceof Group) {
-        visit(child._children, transform)
+  function visitContext(children: readonly GroupChild[], parentTransform: Matrix2D) {
+    const order = { value: 0 }
+    const items: Array<{
+      child: RenderSceneChild | StackingContext
+      transform: Matrix2D
+      zIndex: number
+      order: number
+    }> = []
+
+    collectContextItems(children, parentTransform, order, (child, transform) => {
+      if (child instanceof Container || child instanceof Html) {
+        items.push({
+          child,
+          transform,
+          zIndex: child.zIndex,
+          order: order.value,
+        })
+        order.value += 1
+      }
+    }, (context, transform) => {
+      items.push({
+        child: context,
+        transform,
+        zIndex: context.zIndex,
+        order: order.value,
+      })
+      order.value += 1
+    })
+
+    items.sort((left, right) => left.zIndex - right.zIndex || left.order - right.order)
+
+    for (const item of items) {
+      if (item.child instanceof StackingContext) {
+        visitContext(item.child._children, item.transform)
         continue
       }
 
-      if (child instanceof Container || child instanceof Html) {
-        result.push({
-          child,
-          transform,
-          traversalIndex: result.length,
-        })
-      }
+      result.push({
+        child: item.child,
+        transform: item.transform,
+        traversalIndex: result.length,
+      })
     }
   }
 
-  visit(scene._children, identityMatrix())
+  visitContext(scene._children, identityMatrix())
   return result
 }
 
 /**
- * Flattens a container's glass hierarchy with transform-only groups composed into each glass transform.
+ * Flattens a container's glass hierarchy into final paint order.
  */
 export function flattenContainerGlasses(container: Container): TraversedGlass[] {
   const result: TraversedGlass[] = []
 
-  function visit(children: readonly GroupChild[], parentTransform: Matrix2D) {
-    for (const child of children) {
-      const transform = multiplyMatrices(parentTransform, composeTransform(child))
-      if (child instanceof Group) {
-        visit(child._children, transform)
+  function visitContext(children: readonly GroupChild[], parentTransform: Matrix2D) {
+    const order = { value: 0 }
+    const items: Array<{
+      child: Glass | StackingContext
+      transform: Matrix2D
+      zIndex: number
+      order: number
+    }> = []
+
+    collectContextItems(children, parentTransform, order, (child, transform) => {
+      if (child instanceof Glass) {
+        items.push({
+          child,
+          transform,
+          zIndex: child.zIndex,
+          order: order.value,
+        })
+        order.value += 1
+      }
+    }, (context, transform) => {
+      items.push({
+        child: context,
+        transform,
+        zIndex: context.zIndex,
+        order: order.value,
+      })
+      order.value += 1
+    })
+
+    items.sort((left, right) => left.zIndex - right.zIndex || left.order - right.order)
+
+    for (const item of items) {
+      if (item.child instanceof StackingContext) {
+        visitContext(item.child._children, item.transform)
         continue
       }
 
-      if (child instanceof Glass) {
-        result.push({
-          glass: child,
-          transform,
-          traversalIndex: result.length,
-        })
-      }
+      result.push({
+        glass: item.child,
+        transform: item.transform,
+        traversalIndex: result.length,
+      })
     }
   }
 
-  visit(container._children, identityMatrix())
+  visitContext(container._children, identityMatrix())
   return result
 }
 
 /**
- * Flattens a glass node's HTML hierarchy with transform-only groups composed into each HTML transform.
+ * Flattens a glass node's HTML hierarchy into final paint order.
  */
 export function flattenGlassHtml(glass: Glass): TraversedHtml[] {
   const result: TraversedHtml[] = []
 
-  function visit(children: readonly GroupChild[], parentTransform: Matrix2D) {
-    for (const child of children) {
-      const transform = multiplyMatrices(parentTransform, composeTransform(child))
-      if (child instanceof Group) {
-        visit(child._children, transform)
+  function visitContext(children: readonly GroupChild[], parentTransform: Matrix2D) {
+    const order = { value: 0 }
+    const items: Array<{
+      child: Html | StackingContext
+      transform: Matrix2D
+      zIndex: number
+      order: number
+    }> = []
+
+    collectContextItems(children, parentTransform, order, (child, transform) => {
+      if (child instanceof Html) {
+        items.push({
+          child,
+          transform,
+          zIndex: child.zIndex,
+          order: order.value,
+        })
+        order.value += 1
+      }
+    }, (context, transform) => {
+      items.push({
+        child: context,
+        transform,
+        zIndex: context.zIndex,
+        order: order.value,
+      })
+      order.value += 1
+    })
+
+    items.sort((left, right) => left.zIndex - right.zIndex || left.order - right.order)
+
+    for (const item of items) {
+      if (item.child instanceof StackingContext) {
+        visitContext(item.child._children, item.transform)
         continue
       }
 
-      if (child instanceof Html) {
-        result.push({
-          html: child,
-          transform,
-          traversalIndex: result.length,
-        })
-      }
+      result.push({
+        html: item.child,
+        transform: item.transform,
+        traversalIndex: result.length,
+      })
     }
   }
 
-  visit(glass._children, identityMatrix())
+  visitContext(glass._children, identityMatrix())
   return result
+}
+
+function collectContextItems(
+  children: readonly GroupChild[],
+  parentTransform: Matrix2D,
+  order: { value: number },
+  addRenderable: (child: GroupChild, transform: Matrix2D) => void,
+  addContext: (context: StackingContext, transform: Matrix2D) => void,
+) {
+  for (const child of children) {
+    const transform = multiplyMatrices(parentTransform, composeTransform(child))
+    if (child instanceof StackingContext) {
+      addContext(child, transform)
+      continue
+    }
+
+    if (child instanceof Group) {
+      collectContextItems(child._children, transform, order, addRenderable, addContext)
+      continue
+    }
+
+    addRenderable(child, transform)
+  }
 }
 
 /**

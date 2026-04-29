@@ -10,27 +10,19 @@ import {
 } from '../scene'
 import type { FlattenedContainer } from './interaction'
 
-/** Returns top-level render layers sorted by z-index and traversal order. */
+/** Returns top-level render layers in final scene paint order. */
 export function getSortedSceneLayers(scene: Scene) {
-  return flattenSceneLayers(scene).sort((left, right) => {
-    const leftZIndex = left.child.zIndex
-    const rightZIndex = right.child.zIndex
-    return leftZIndex - rightZIndex || left.traversalIndex - right.traversalIndex
-  })
+  return flattenSceneLayers(scene)
 }
 
-/** Returns a container's flattened glass children sorted by z-index and traversal order. */
+/** Returns a container's flattened glass children in final local paint order. */
 export function getSortedGlassLayers(container: Container) {
-  return flattenContainerGlasses(container).sort(
-    (left, right) => left.glass.zIndex - right.glass.zIndex || left.traversalIndex - right.traversalIndex,
-  )
+  return flattenContainerGlasses(container)
 }
 
-/** Returns a glass node's flattened HTML children sorted by z-index and traversal order. */
+/** Returns a glass node's flattened HTML children in final local paint order. */
 export function getSortedGlassHtmlLayers(glass: Glass) {
-  return flattenGlassHtml(glass).sort(
-    (left, right) => left.html.zIndex - right.html.zIndex || left.traversalIndex - right.traversalIndex,
-  )
+  return flattenGlassHtml(glass)
 }
 
 /** Extracts flattened container layers for interaction and content sync. */
