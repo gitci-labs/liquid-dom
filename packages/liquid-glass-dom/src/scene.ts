@@ -558,9 +558,7 @@ export class Container implements Transform {
     if (options.specularFalloff !== undefined) {
       this.specularFalloff = options.specularFalloff
     }
-    if (options.oppositeSpecularStrength !== undefined) {
-      this.oppositeSpecularStrength = options.oppositeSpecularStrength
-    }
+    this.oppositeSpecularStrength = options.oppositeSpecularStrength ?? this.specularStrength
     if (options.specularSharpness !== undefined) {
       this.specularSharpness = options.specularSharpness
     }

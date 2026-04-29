@@ -207,6 +207,8 @@ new Container(options?: Partial<Transform> & {
 })
 ```
 
+When `oppositeSpecularStrength` is omitted, it defaults to the resolved `specularStrength`.
+
 Methods:
 
 - `add(child: Glass): Glass`
