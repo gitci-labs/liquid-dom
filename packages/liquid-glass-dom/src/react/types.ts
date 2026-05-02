@@ -141,6 +141,8 @@ export type TransformProps = ChildrenProp & RefProp<TransformRef> & TransformOpt
 export type GlassContainerProps = ChildrenProp & RefProp<GlassContainerRef> & GlassContainerOptions & TransitionProp<GlassContainerOptions>
 export type GlassPointerHandler = (event: GlassPointerEvent) => void
 export type GlassProps = ChildrenProp & RefProp<GlassRef> & GlassOptions & TransitionProp<GlassOptions> & {
+  whileHover?: Partial<GlassOptions>
+  whilePress?: Partial<GlassOptions>
   onClick?: GlassPointerHandler
   onPointerEnter?: GlassPointerHandler
   onPointerLeave?: GlassPointerHandler

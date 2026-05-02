@@ -11,7 +11,6 @@ import {
   VStack,
   ZStack,
   spring,
-  useAnimate,
   useTimeline,
   type GlassContainerRef,
   type TransformRef,
@@ -33,7 +32,7 @@ type DemoCard = {
 
 const CARDS: DemoCard[] = [
   { id: 'declarative', label: 'transition prop', title: 'Declarative', metric: 'props' },
-  { id: 'imperative', label: 'useAnimate', title: 'Hover spring', metric: 'refs' },
+  { id: 'states', label: 'whileHover', title: 'Hover state', metric: 'props' },
   { id: 'timeline', label: 'useTimeline', title: 'Sequence', metric: 'steps' },
 ]
 
@@ -203,49 +202,25 @@ type AnimatedCardProps = {
 }
 
 function AnimatedCard({ refNode, card, width, rotation }: AnimatedCardProps) {
-  const animate = useAnimate()
-
   return (
     <Transform
       ref={refNode}
       origin={CARD_ORIGIN}
       rotation={rotation}
-      transition={{ rotation: LAYOUT_SPRING }}
+      transition={{
+        rotation: LAYOUT_SPRING,
+      }}
     >
       <Glass
         cornerRadius={34}
         pointerEvents
         transition={{ cornerRadius: FAST_SPRING }}
-        onPointerEnter={() => {
-          animate(refNode.current, {
-            scaleX: 1.16,
-            scaleY: 1.16,
-            y: -12,
-          }, FAST_SPRING)
-        }}
-        onPointerLeave={() => {
-          animate(refNode.current, {
-            scaleX: 1,
-            scaleY: 1,
-            y: 0,
-          }, FAST_SPRING)
-        }}
-        onPointerDown={() => {
-          animate(refNode.current, {
-            scaleX: 0.94,
-            scaleY: 0.94,
-          }, spring({ stiffness: 620, damping: 36 }))
-        }}
-        onPointerUp={() => {
-          animate(refNode.current, {
-            scaleX: 1.16,
-            scaleY: 1.16,
-          }, FAST_SPRING)
-        }}
+        whileHover={{ cornerRadius: 52 }}
+        whilePress={{ cornerRadius: 20 }}
       >
         <Frame
           width={width}
-          // height={CARD_HEIGHT}
+          height={CARD_HEIGHT}
           transition={{ width: LAYOUT_SPRING }}
         >
           <Html sizing="fill">

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Background as LayoutBackground,
@@ -29,6 +29,7 @@ import type {
   VStackProps,
   ZStackProps,
 } from './types'
+import type { GlassOptions } from '../layout'
 import { useAnimatedProps } from './animatedProps'
 import {
   renderNodeChildren,
@@ -259,6 +260,53 @@ export function GlassContainer({
   return renderNodeChildren(useNodeParent(node), children)
 }
 
+function hasInteractionProps(props: Partial<GlassOptions> | undefined) {
+  return Boolean(props && Object.keys(props).length > 0)
+}
+
+function hasOwnProp(props: Partial<GlassOptions> | undefined, key: keyof GlassOptions) {
+  return Boolean(props && Object.prototype.hasOwnProperty.call(props, key))
+}
+
+function getGlassProp(node: LayoutGlass, key: keyof GlassOptions) {
+  return (node as unknown as Record<string, unknown>)[key]
+}
+
+function resolveInteractiveGlassProps(
+  node: LayoutGlass,
+  base: GlassOptions,
+  whileHover: Partial<GlassOptions> | undefined,
+  whilePress: Partial<GlassOptions> | undefined,
+  hovered: boolean,
+  pressed: boolean,
+  baseFallback: Partial<GlassOptions>,
+) {
+  const resolved = { ...base } as Record<string, unknown>
+  const fallback = baseFallback as Record<string, unknown>
+  const keys = new Set<keyof GlassOptions>([
+    ...Object.keys(whileHover ?? {}) as Array<keyof GlassOptions>,
+    ...Object.keys(whilePress ?? {}) as Array<keyof GlassOptions>,
+  ])
+
+  for (const key of keys) {
+    if (!hasOwnProp(baseFallback, key)) {
+      fallback[key] = hasOwnProp(base, key) ? (base as Record<string, unknown>)[key] : getGlassProp(node, key)
+    }
+
+    if (!hasOwnProp(base, key)) {
+      resolved[key] = fallback[key]
+    }
+    if (hovered && hasOwnProp(whileHover, key)) {
+      resolved[key] = (whileHover as Record<string, unknown> | undefined)?.[key]
+    }
+    if (pressed && hasOwnProp(whilePress, key)) {
+      resolved[key] = (whilePress as Record<string, unknown> | undefined)?.[key]
+    }
+  }
+
+  return resolved as GlassOptions
+}
+
 /** Liquid-glass shape component. */
 export function Glass({
   ref,
@@ -275,7 +323,13 @@ export function Glass({
   onPointerUp,
   onPointerCancel,
   transition,
+  whileHover,
+  whilePress,
 }: GlassProps) {
+  const [hovered, setHovered] = useState(false)
+  const [pressed, setPressed] = useState(false)
+  const baseFallbackRef = useRef<Partial<GlassOptions>>({})
+  const hasInteraction = hasInteractionProps(whileHover) || hasInteractionProps(whilePress)
   const hasPointerHandler = Boolean(
     onClick ||
     onPointerEnter ||
@@ -285,7 +339,7 @@ export function Glass({
     onPointerUp ||
     onPointerCancel,
   )
-  const effectivePointerEvents = pointerEvents ?? hasPointerHandler
+  const effectivePointerEvents = pointerEvents ?? (hasPointerHandler || hasInteraction)
   const node = useStableNode(() => new LayoutGlass({
     cornerRadius,
     cornerTransitionSpeed,
@@ -294,22 +348,39 @@ export function Glass({
   }))
   useExposeRef(ref, node)
   useAttachNode(node)
-  useAnimatedProps(node, {
+  const resolvedProps = resolveInteractiveGlassProps(node, {
     cornerRadius,
     cornerTransitionSpeed,
     pointerEvents: effectivePointerEvents,
     zIndex,
-  }, transition, { assignUndefined: false })
+  }, whileHover, whilePress, hovered, pressed, baseFallbackRef.current)
+  useAnimatedProps(node, resolvedProps, transition, { assignUndefined: false })
 
   useEffect(() => {
     const listeners: Array<[string, GlassPointerHandler | undefined]> = [
       ['click', onClick],
-      ['pointerenter', onPointerEnter],
-      ['pointerleave', onPointerLeave],
+      ['pointerenter', hasInteraction || onPointerEnter ? (event) => {
+        setHovered(true)
+        onPointerEnter?.(event)
+      } : undefined],
+      ['pointerleave', hasInteraction || onPointerLeave ? (event) => {
+        setHovered(false)
+        setPressed(false)
+        onPointerLeave?.(event)
+      } : undefined],
       ['pointermove', onPointerMove],
-      ['pointerdown', onPointerDown],
-      ['pointerup', onPointerUp],
-      ['pointercancel', onPointerCancel],
+      ['pointerdown', hasInteraction || onPointerDown ? (event) => {
+        setPressed(true)
+        onPointerDown?.(event)
+      } : undefined],
+      ['pointerup', hasInteraction || onPointerUp ? (event) => {
+        setPressed(false)
+        onPointerUp?.(event)
+      } : undefined],
+      ['pointercancel', hasInteraction || onPointerCancel ? (event) => {
+        setPressed(false)
+        onPointerCancel?.(event)
+      } : undefined],
     ]
 
     for (const [type, listener] of listeners) {
@@ -325,7 +396,17 @@ export function Glass({
         }
       }
     }
-  }, [node, onClick, onPointerEnter, onPointerLeave, onPointerMove, onPointerDown, onPointerUp, onPointerCancel])
+  }, [
+    node,
+    hasInteraction,
+    onClick,
+    onPointerEnter,
+    onPointerLeave,
+    onPointerMove,
+    onPointerDown,
+    onPointerUp,
+    onPointerCancel,
+  ])
 
   return renderNodeChildren(useNodeParent(node), children)
 }

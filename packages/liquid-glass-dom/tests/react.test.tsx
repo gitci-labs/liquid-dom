@@ -470,6 +470,56 @@ describe('React layout components', () => {
     expect(onClick).toHaveBeenCalledTimes(1)
   })
 
+  it('applies Glass whileHover and whilePress props through transitions', async () => {
+    const glassRef = createRef<GlassRef>()
+
+    await renderReact(
+      <LayoutCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
+        <GlassContainer>
+          <Glass
+            ref={glassRef}
+            cornerRadius={10}
+            zIndex={0}
+            transition={{ cornerRadius: spring({ stiffness: 300, damping: 30 }) }}
+            whileHover={{ cornerRadius: 40, zIndex: 7 }}
+            whilePress={{ cornerRadius: 18, zIndex: 11 }}
+          >
+            <FixedHtml width={10} height={10} />
+          </Glass>
+        </GlassContainer>
+      </LayoutCanvas>,
+    )
+    flushFrame()
+
+    expect(glassRef.current?.pointerEvents).toBe(true)
+    expect(glassRef.current?.cornerRadius).toBe(10)
+
+    act(() => {
+      glassRef.current?.sceneNode.dispatchEvent(new Event('pointerenter'))
+    })
+    expect(glassRef.current?.zIndex).toBe(7)
+    expect(glassRef.current?.cornerRadius).toBe(10)
+
+    flushFrame(32)
+    expect(glassRef.current!.cornerRadius).toBeGreaterThan(10)
+    expect(glassRef.current!.cornerRadius).toBeLessThan(40)
+
+    act(() => {
+      glassRef.current?.sceneNode.dispatchEvent(new Event('pointerdown'))
+    })
+    expect(glassRef.current?.zIndex).toBe(11)
+
+    act(() => {
+      glassRef.current?.sceneNode.dispatchEvent(new Event('pointerup'))
+    })
+    expect(glassRef.current?.zIndex).toBe(7)
+
+    act(() => {
+      glassRef.current?.sceneNode.dispatchEvent(new Event('pointerleave'))
+    })
+    expect(glassRef.current?.zIndex).toBe(0)
+  })
+
   it('runs useFrame callbacks in priority order and cleans them up', async () => {
     const calls: string[] = []
     const canvasRef = createRef<LayoutCanvasRef>()
