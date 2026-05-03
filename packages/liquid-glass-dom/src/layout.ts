@@ -970,6 +970,16 @@ export class GlassContainer extends SingleChildUiNode<LaymeoutNode, SceneContain
     }
   }
 
+  get displacementBlur(): number {
+    return this.sceneNode.displacementBlur
+  }
+
+  set displacementBlur(value: number) {
+    if (setProperty(this.sceneNode, 'displacementBlur', value)) {
+      this.invalidateFrame('displacementBlur')
+    }
+  }
+
   get ior(): number {
     return this.sceneNode.ior
   }
@@ -1107,6 +1117,16 @@ export class GlassContainer extends SingleChildUiNode<LaymeoutNode, SceneContain
   set tint(value: RgbaColor) {
     if (setProperty(this.sceneNode, 'tint', value)) {
       this.invalidateFrame('tint')
+    }
+  }
+
+  get debugDisplacement(): boolean {
+    return this.sceneNode.debugDisplacement
+  }
+
+  set debugDisplacement(value: boolean) {
+    if (setProperty(this.sceneNode, 'debugDisplacement', value)) {
+      this.invalidateFrame('debugDisplacement')
     }
   }
 

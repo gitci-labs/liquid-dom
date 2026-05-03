@@ -43,6 +43,7 @@ export type ContainerInit = Partial<Transform> & {
   bezelWidth?: number
   thickness?: number
   displacementFactor?: number
+  displacementBlur?: number
   ior?: number
   contentIor?: number
   contentDepth?: number
@@ -57,6 +58,7 @@ export type ContainerInit = Partial<Transform> & {
   specularOpacity?: number
   reflectionOffset?: number
   tint?: RgbaColor
+  debugDisplacement?: boolean
   zIndex?: number
 }
 
@@ -570,6 +572,8 @@ export class Container implements Transform {
   thickness = 90
   /** Scalar applied to the physically-derived displacement amount. */
   displacementFactor = 1
+  /** Blur radius applied to the precomputed displacement field in CSS pixels. */
+  displacementBlur = 4
   /** Refractive index used for the displacement model. */
   ior = 1.5
   /** Refractive index used when refracting DOM content rendered inside the glass. */
@@ -601,6 +605,8 @@ export class Container implements Transform {
   reflectionOffset = 18
   /** RGBA tint color layered over the refracted glass interior. */
   tint: RgbaColor = { r: 0.15, g: 0.15, b: 0.15, a: 0.7 }
+  /** Renders the calculated displacement field instead of the shaded glass. */
+  debugDisplacement = false
   /** Draw order among scene layers; higher values render later. */
   zIndex = 0
 
@@ -627,6 +633,9 @@ export class Container implements Transform {
     }
     if (options.displacementFactor !== undefined) {
       this.displacementFactor = options.displacementFactor
+    }
+    if (options.displacementBlur !== undefined) {
+      this.displacementBlur = options.displacementBlur
     }
     if (options.ior !== undefined) {
       this.ior = options.ior
@@ -667,6 +676,9 @@ export class Container implements Transform {
     }
     if (options.tint !== undefined) {
       this.tint = cloneColor(options.tint)
+    }
+    if (options.debugDisplacement !== undefined) {
+      this.debugDisplacement = options.debugDisplacement
     }
     if (options.zIndex !== undefined) {
       this.zIndex = options.zIndex

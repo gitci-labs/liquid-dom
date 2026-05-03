@@ -193,6 +193,7 @@ export function GlassContainer({
   bezelWidth,
   thickness,
   displacementFactor,
+  displacementBlur,
   ior,
   contentIor,
   contentDepth,
@@ -207,6 +208,7 @@ export function GlassContainer({
   specularOpacity,
   reflectionOffset,
   tint,
+  debugDisplacement,
   zIndex,
   transition,
 }: GlassContainerProps) {
@@ -216,6 +218,7 @@ export function GlassContainer({
     bezelWidth,
     thickness,
     displacementFactor,
+    displacementBlur,
     ior,
     contentIor,
     contentDepth,
@@ -230,6 +233,7 @@ export function GlassContainer({
     specularOpacity,
     reflectionOffset,
     tint,
+    debugDisplacement,
     zIndex,
   }))
   useExposeRef(ref, node)
@@ -240,6 +244,7 @@ export function GlassContainer({
     bezelWidth,
     thickness,
     displacementFactor,
+    displacementBlur,
     ior,
     contentIor,
     contentDepth,
@@ -254,6 +259,7 @@ export function GlassContainer({
     specularOpacity,
     reflectionOffset,
     tint,
+    debugDisplacement,
     zIndex,
   }, transition, { assignUndefined: false })
 

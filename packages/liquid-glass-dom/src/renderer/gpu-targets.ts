@@ -4,6 +4,8 @@ import { GPU_TEXTURE_USAGE } from './gpu-constants'
 export type RenderTargetSet = {
   blurPing: GPUTexture
   blur: GPUTexture
+  displacementPing: GPUTexture
+  displacement: GPUTexture
   sceneA: GPUTexture
   sceneB: GPUTexture
 }
@@ -48,6 +50,8 @@ export function destroyTargets(targets: RenderTargetSet | null) {
 
   targets.blurPing.destroy()
   targets.blur.destroy()
+  targets.displacementPing.destroy()
+  targets.displacement.destroy()
   targets.sceneA.destroy()
   targets.sceneB.destroy()
 }

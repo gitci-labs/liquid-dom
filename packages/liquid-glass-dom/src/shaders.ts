@@ -62,6 +62,73 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
 }
 `
 
+// Blurs premultiplied displacement-field data. The field stores the bevel slope
+// in rg multiplied by alpha, with alpha acting as the validity weight.
+export const DISPLACEMENT_FIELD_BLUR_SHADER = /* wgsl */ `
+${BlurParamsLayout.wgsl('BlurParams')}
+
+@group(0) @binding(0) var fieldSampler: sampler;
+@group(0) @binding(1) var inputTexture: texture_2d<f32>;
+@group(0) @binding(2) var<uniform> blurParams: BlurParams;
+
+const DISPLACEMENT_FIELD_BLUR_TAP_RADIUS: i32 = 8;
+const DISPLACEMENT_FIELD_BLUR_SIGMA: f32 = 4.0;
+
+struct VertexOutput {
+  @builtin(position) position: vec4f,
+  @location(0) uv: vec2f,
+};
+
+@vertex
+fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+  var positions = array<vec2f, 3>(
+    vec2f(-1.0, -3.0),
+    vec2f(-1.0, 1.0),
+    vec2f(3.0, 1.0),
+  );
+
+  let position = positions[vertexIndex];
+  var output: VertexOutput;
+  output.position = vec4f(position, 0.0, 1.0);
+  output.uv = vec2f(position.x * 0.5 + 0.5, 0.5 - position.y * 0.5);
+  return output;
+}
+
+fn gaussianWeight(index: f32, sigma: f32) -> f32 {
+  return exp(-0.5 * index * index / max(sigma * sigma, 0.0001));
+}
+
+@fragment
+fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
+  let textureSize = vec2f(textureDimensions(inputTexture));
+  // Use a denser 17-tap kernel for the displacement field than the backdrop blur.
+  // With radius 8 this samples every pixel from -8..8, avoiding visible tap bands
+  // in the displacement map while preserving the requested outer blur radius.
+  let blurStep =
+    blurParams.params.xy /
+    max(textureSize, vec2f(1.0)) *
+    (blurParams.params.z / f32(DISPLACEMENT_FIELD_BLUR_TAP_RADIUS));
+  let clampedUv = clamp(in.uv, vec2f(0.0), vec2f(1.0));
+
+  var field = vec4f(0.0);
+  var totalWeight = 0.0;
+
+  for (
+    var i = -DISPLACEMENT_FIELD_BLUR_TAP_RADIUS;
+    i <= DISPLACEMENT_FIELD_BLUR_TAP_RADIUS;
+    i = i + 1
+  ) {
+    let index = f32(i);
+    let weight = gaussianWeight(index, DISPLACEMENT_FIELD_BLUR_SIGMA);
+    let sampleUv = clamp(clampedUv + blurStep * index, vec2f(0.0), vec2f(1.0));
+    field = field + textureSampleLevel(inputTexture, fieldSampler, sampleUv, 0.0) * weight;
+    totalWeight = totalWeight + weight;
+  }
+
+  return field / max(totalWeight, 0.0001);
+}
+`
+
 // Shared SDF, profile, and fullscreen-triangle helpers used by the glass and
 // metrics passes so both evaluate the same fused shape field.
 const SHADER_SHARED = /* wgsl */ `
@@ -89,6 +156,7 @@ const SDF_GRADIENT_STEP_PX: f32 = 1.0;
 const NORMAL_DIVERGENCE_BLEND_END: f32 = 0.35;
 const EXPOSURE_BAND_SCALE: f32 = 0.35;
 const MIN_EXPOSURE_BAND_PX: f32 = 1.0;
+const DEBUG_DISPLACEMENT_ENCODE_SCALE: f32 = 0.01;
 
 // Keep the SDF value and its local normal together. The normal is used to decide
 // when smoothing is a real edge-to-edge blend instead of an overlap artifact.
@@ -295,6 +363,38 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 }
 `
 
+// Writes the container's surface field before the main glass pass. The field is
+// premultiplied by fill weight so blur kernels can cross the glass edge without
+// leaking invalid vectors from outside the shape.
+export const DISPLACEMENT_FIELD_SHADER = /* wgsl */ `
+${SHADER_SHARED}
+
+@group(0) @binding(0) var<uniform> globals: Globals;
+@group(0) @binding(1) var<storage, read> shapes: array<ShapeData>;
+
+@fragment
+fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
+  let shapeCount = u32(globals.shape.z);
+  let fragCoord = in.uv * globals.canvas.xy;
+  let sdfSample = sceneSdfSample(fragCoord, shapeCount, globals.shape.x);
+  let distance = sdfSample.distance;
+  let fillMask = 1.0 - smoothstep(0.0, 1.4, distance);
+  let pixelWidth = max(fwidth(distance), 0.75);
+  let bezelWidth = max(globals.shape.y, pixelWidth * 2.0);
+  let inwardDistance = max(-distance, 0.0);
+  let bezelProgress = clamp(inwardDistance / bezelWidth, 0.0, 1.0);
+  let surfaceDerivative = select(
+    evaluateHeightProfile(globals.shape.w, bezelProgress).y,
+    0.0,
+    inwardDistance > bezelWidth,
+  );
+  let clampedSlope = min(surfaceDerivative, tan(1.4835298));
+  let surfaceSlope = sdfSample.gradient * clampedSlope;
+
+  return vec4f(surfaceSlope * fillMask, 0.0, fillMask);
+}
+`
+
 // Used by the main glass render pass. This shades the fused glass containers,
 // sampling the sharp and blurred backdrop textures for refraction, reflection, and highlights.
 export const GLASS_SHADER = /* wgsl */ `
@@ -310,6 +410,7 @@ ${SHADER_SHARED}
 ${ContentDataLayout.wgsl('ContentData')}
 
 @group(0) @binding(6) var<storage, read> contentEntries: array<ContentData>;
+@group(0) @binding(7) var displacementFieldTexture: texture_2d<f32>;
 
 fn sampleBackgroundSharp(uv: vec2f) -> vec3f {
   return textureSampleLevel(backgroundTextureSharp, backgroundSampler, uv, 0.0).rgb;
@@ -317,6 +418,11 @@ fn sampleBackgroundSharp(uv: vec2f) -> vec3f {
 
 fn sampleBackgroundBlurred(uv: vec2f) -> vec3f {
   return textureSampleLevel(backgroundTextureBlurred, backgroundSampler, uv, 0.0).rgb;
+}
+
+fn sampleSurfaceSlope(uv: vec2f) -> vec2f {
+  let field = textureSampleLevel(displacementFieldTexture, backgroundSampler, uv, 0.0);
+  return select(vec2f(0.0), field.xy / max(field.a, SDF_EPSILON), field.a > SDF_EPSILON);
 }
 
 fn contentLocalPos(content: ContentData, glassLocalPos: vec2f) -> vec2f {
@@ -387,12 +493,13 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
   let profileHeight = profileResult.x * bezelWidth;
   let flatHeight = evaluateHeightProfile(globals.shape.w, 1.0).x * bezelWidth;
   let surfaceHeight = globals.glass.x + select(profileHeight, flatHeight, inwardDistance > bezelWidth);
-  let surfaceDerivative = select(profileResult.y, 0.0, inwardDistance > bezelWidth);
-  let clampedSlope = min(surfaceDerivative, tan(1.4835298));
+  let surfaceSlope = sampleSurfaceSlope(in.uv);
 
-  // Build a beveled surface normal from the SDF gradient plus the chosen height profile,
-  // then refract the view ray per channel to get the displaced background lookup.
-  let surfaceNormal = normalize(vec3f(gradient * clampedSlope, 1.0));
+  // The displacement prepass filters the 2D bevel slope before we rebuild the
+  // 3D surface normal. Keeping this as a surface field, rather than a final
+  // pixel displacement, lets the glass and content refraction paths still use
+  // their own IOR, depth, and dispersion settings.
+  let surfaceNormal = normalize(vec3f(surfaceSlope, 1.0));
   let dispersion = max(globals.glass.w, 0.0);
   let baseIor = max(globals.glass.z, 1.0001);
   let refractedRayRed = refract(
@@ -421,6 +528,12 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
     vec2f(0.0),
     fillMask <= 0.0,
   );
+  if (globals.debug.x > 0.5) {
+    // Signed pixel displacement is centered at 0.5 for display in the color target:
+    // red/green hold x/y displacement, blue stays zero.
+    let debugDisplacement = displacementPxGreen * DEBUG_DISPLACEMENT_ENCODE_SCALE + vec2f(0.5);
+    return vec4f(mix(background, vec3f(debugDisplacement, 0.0), fillMask), 1.0);
+  }
   let contentBaseIor = max(globals.content.x, 1.0001);
   let contentRefractedRayRed = refract(
     vec3f(0.0, 0.0, -1.0),
