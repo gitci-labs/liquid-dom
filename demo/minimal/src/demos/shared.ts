@@ -1,6 +1,6 @@
 import type { GlassPointerEvent } from 'liquid-glass-dom'
 
-export type DemoTab = 'tiny' | 'layout-simple' | 'animation' | 'dom-measurement' | 'layout' | 'pointer' | 'html'
+export type DemoTab = 'tiny' | 'sdf-overlap' | 'layout-simple' | 'animation' | 'dom-measurement' | 'layout' | 'pointer' | 'html'
 
 export type EventRow = {
   id: number

@@ -99,6 +99,12 @@
   gap: 18px;
 }
 
+.sdf-overlap-demo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+}
+
 .dom-measure-demo {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -123,6 +129,11 @@
 .simple-layout-canvas-shell {
   height: 560px;
   background: #05070c;
+}
+
+.sdf-overlap-canvas-shell {
+  height: 500px;
+  background: #07090d;
 }
 
 .dom-measure-canvas-shell {
@@ -158,6 +169,31 @@
 .layout-control input[type="range"] {
   width: 100%;
   accent-color: #96f1ca;
+}
+
+.sdf-overlap-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  align-items: end;
+}
+
+.sdf-overlap-control-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 76px;
+  gap: 12px;
+  align-items: center;
+}
+
+.sdf-overlap-number {
+  min-width: 0;
+  height: 36px;
+  padding: 0 8px;
+  color: rgba(244, 255, 251, 0.92);
+  font-variant-numeric: tabular-nums;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
 }
 
 .animation-controls {

@@ -74,9 +74,63 @@ struct VertexOutput {
   @location(0) uv: vec2f,
 };
 
-fn smin(a: f32, b: f32, k: f32) -> f32 {
-  let h = clamp(0.5 + 0.5 * (b - a) / max(k, 0.0001), 0.0, 1.0);
-  return mix(b, a, h) - k * h * (1.0 - h);
+// Smooth union uses the classic polynomial smooth-min only after two gates.
+// The normal gate rejects duplicate, nested, and locally parallel boundaries:
+// coincident surfaces are exposure-ambiguous because each shape samples exactly
+// on the other's zero contour, so exposure alone would still leave a partial
+// blend and a smaller version of the overlap bulge. The exposure gate rejects
+// surfaces that are clearly buried inside the other side of the union, such as
+// a rounded corner hidden inside an overlapping rectangle. Lower
+// NORMAL_DIVERGENCE_BLEND_END values make blends appear sooner as normals
+// diverge. Higher EXPOSURE_BAND_SCALE values make the hidden-surface test more
+// forgiving, but can let overlap bulges return.
+const SDF_EPSILON: f32 = 0.0001;
+const SDF_GRADIENT_STEP_PX: f32 = 1.0;
+const NORMAL_DIVERGENCE_BLEND_END: f32 = 0.35;
+const EXPOSURE_BAND_SCALE: f32 = 0.35;
+const MIN_EXPOSURE_BAND_PX: f32 = 1.0;
+
+// Keep the SDF value and its local normal together. The normal is used to decide
+// when smoothing is a real edge-to-edge blend instead of an overlap artifact.
+struct SdfSample {
+  distance: f32,
+  gradient: vec2f,
+};
+
+fn normalizeSdfGradient(gradient: vec2f) -> vec2f {
+  let magnitude = length(gradient);
+  if (magnitude < SDF_EPSILON) {
+    return vec2f(0.0, -1.0);
+  }
+  return gradient / magnitude;
+}
+
+fn hardUnion(left: SdfSample, right: SdfSample) -> SdfSample {
+  if (left.distance <= right.distance) {
+    return left;
+  }
+  return right;
+}
+
+fn smoothUnion(left: SdfSample, right: SdfSample, smoothing: f32, exposure: f32) -> SdfSample {
+  // Identical or nested shapes have nearly aligned normals; smoothing those cases
+  // would only expand the silhouette. Diverging normals indicate two exposed
+  // boundaries meeting, which is where a rounded transition is useful.
+  let normalAlignment = clamp(dot(left.gradient, right.gradient), -1.0, 1.0);
+  let normalDivergence = smoothstep(0.0, NORMAL_DIVERGENCE_BLEND_END, 1.0 - normalAlignment);
+  let blendDistance = smoothing * normalDivergence * clamp(exposure, 0.0, 1.0);
+
+  if (blendDistance <= SDF_EPSILON) {
+    return hardUnion(left, right);
+  }
+
+  let h = clamp(0.5 + 0.5 * (right.distance - left.distance) / blendDistance, 0.0, 1.0);
+  return SdfSample(
+    // Classic polynomial smooth-min. The blend distance has already been gated,
+    // so this remains conservative for hidden or duplicate-overlap cases.
+    mix(right.distance, left.distance, h) - blendDistance * h * (1.0 - h),
+    normalizeSdfGradient(mix(right.gradient, left.gradient, h)),
+  );
 }
 
 fn squircleLength(v: vec2f) -> f32 {
@@ -124,35 +178,64 @@ fn shapeDistance(shape: ShapeData, pos: vec2f) -> f32 {
   return shapeDistanceFromLocal(shape, shapeLocalPos(shape, pos));
 }
 
-fn sceneSdf(pos: vec2f, shapeCount: u32, smoothing: f32) -> f32 {
+// Hard-union distance for shapes that have already been folded into result.
+// Used to test if the next shape's projected surface is buried inside them.
+fn sceneHardSdfPrefix(pos: vec2f, shapeCount: u32) -> f32 {
   var distance = 1e5;
-  var found = false;
 
   for (var i = 0u; i < shapeCount; i = i + 1u) {
-    let shape = shapes[i];
-    let nextDistance = shapeDistance(shape, pos);
-    if (!found) {
-      distance = nextDistance;
-      found = true;
-    } else {
-      distance = smin(distance, nextDistance, smoothing);
-    }
+    distance = min(distance, shapeDistance(shapes[i], pos));
   }
 
   return distance;
 }
 
-fn sdfGradient(pos: vec2f, shapeCount: u32, smoothing: f32) -> vec2f {
-  let eps = 1.0;
-  let gradient = vec2f(
-    sceneSdf(pos + vec2f(eps, 0.0), shapeCount, smoothing) - sceneSdf(pos - vec2f(eps, 0.0), shapeCount, smoothing),
-    sceneSdf(pos + vec2f(0.0, eps), shapeCount, smoothing) - sceneSdf(pos - vec2f(0.0, eps), shapeCount, smoothing),
+fn shapeGradient(shape: ShapeData, pos: vec2f) -> vec2f {
+  let eps = SDF_GRADIENT_STEP_PX;
+  return normalizeSdfGradient(vec2f(
+    shapeDistance(shape, pos + vec2f(eps, 0.0)) - shapeDistance(shape, pos - vec2f(eps, 0.0)),
+    shapeDistance(shape, pos + vec2f(0.0, eps)) - shapeDistance(shape, pos - vec2f(0.0, eps)),
+  ));
+}
+
+fn shapeSdfSample(shape: ShapeData, pos: vec2f) -> SdfSample {
+  return SdfSample(
+    shapeDistance(shape, pos),
+    shapeGradient(shape, pos),
   );
-  let magnitude = length(gradient);
-  if (magnitude < 0.0001) {
-    return vec2f(0.0, -1.0);
+}
+
+fn sceneSdfSample(pos: vec2f, shapeCount: u32, smoothing: f32) -> SdfSample {
+  var result = SdfSample(1e5, vec2f(0.0, -1.0));
+  var found = false;
+
+  for (var i = 0u; i < shapeCount; i = i + 1u) {
+    let nextSample = shapeSdfSample(shapes[i], pos);
+    if (!found) {
+      result = nextSample;
+      found = true;
+    } else {
+      // Project from the sample point back to each shape's nearest surface. If
+      // either projected surface is inside the other side of the union, it is a
+      // hidden internal boundary and should not create smoothing or a bulge.
+      let exposureBand = max(smoothing * EXPOSURE_BAND_SCALE, MIN_EXPOSURE_BAND_PX);
+      let resultSurfacePos = pos - result.distance * result.gradient;
+      let nextSurfacePos = pos - nextSample.distance * nextSample.gradient;
+      let resultSurfaceExposure = smoothstep(
+        -exposureBand,
+        exposureBand,
+        shapeDistance(shapes[i], resultSurfacePos),
+      );
+      let nextSurfaceExposure = smoothstep(
+        -exposureBand,
+        exposureBand,
+        sceneHardSdfPrefix(nextSurfacePos, i),
+      );
+      result = smoothUnion(result, nextSample, smoothing, resultSurfaceExposure * nextSurfaceExposure);
+    }
   }
-  return gradient / magnitude;
+
+  return result;
 }
 
 fn smootherstep(value: f32) -> f32 {
@@ -282,9 +365,10 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
   let fragCoord = in.uv * globals.canvas.xy;
   let background = sampleBackgroundSharp(in.uv);
 
-  let distance = sceneSdf(fragCoord, shapeCount, globals.shape.x);
+  let sdfSample = sceneSdfSample(fragCoord, shapeCount, globals.shape.x);
+  let distance = sdfSample.distance;
   let fillMask = 1.0 - smoothstep(0.0, 1.4, distance);
-  let gradient = sdfGradient(fragCoord, shapeCount, globals.shape.x);
+  let gradient = sdfSample.gradient;
   let pixelWidth = max(fwidth(distance), 0.75);
   let rimWidth = max(globals.specular.y, 0.0001);
   let rimBandMask =
@@ -477,7 +561,7 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
   let insideCanvas =
     all(positionPx >= vec2f(0.0)) &&
     all(positionPx <= globals.canvas.xy);
-  let distance = sceneSdf(positionPx, shapeCount, globals.shape.x);
+  let distance = sceneSdfSample(positionPx, shapeCount, globals.shape.x).distance;
   // This uses bezel width as the interior cutoff. For heavily fused shapes with
   // spacing wider than the bezel, the transition band can extend past this threshold,
   // but we accept that simplification for now because it does not occur in our target use cases.

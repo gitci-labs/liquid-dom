@@ -145,8 +145,8 @@ function GlassGrid({ columnGap, rowGap, rowTransform }: GlassGridProps) {
                   const cardIndex = rowIndex * 3 + columnIndex + 1
                   return (
                     <Padding key={columnIndex} insets={{
-                      horizontal: -10,
-                      vertical: -10,
+                      horizontal: -20,
+                      vertical: -20,
                     }}>
                       <GlassCard index={cardIndex} />
                     </Padding>

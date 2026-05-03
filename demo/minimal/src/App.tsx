@@ -5,6 +5,7 @@ import DomMeasurementDemo from './demos/DomMeasurementDemo'
 import HtmlLayersDemo from './demos/HtmlLayersDemo'
 import LayoutSceneDemo from './demos/LayoutSceneDemo'
 import PointerEventsDemo from './demos/PointerEventsDemo'
+import SdfOverlapDemo from './demos/SdfOverlapDemo'
 import SimpleLayoutSceneDemo from './demos/SimpleLayoutSceneDemo'
 import TinyGlassDemo from './demos/TinyGlassDemo'
 import type { DemoTab } from './demos/shared'
@@ -36,6 +37,16 @@ export default function App() {
             >
               <span>Simple layout</span>
               <small>One VStack, three HStacks, nine glass nodes</small>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeDemo === 'sdf-overlap'}
+              className={activeDemo === 'sdf-overlap' ? 'demo-tab active' : 'demo-tab'}
+              onClick={() => setActiveDemo('sdf-overlap')}
+            >
+              <span>SDF overlap</span>
+              <small>Two rounded rectangles, negative distance, spacing slider</small>
             </button>
             <button
               type="button"
@@ -93,6 +104,8 @@ export default function App() {
         <section className="demo-content">
           {activeDemo === 'tiny' ? (
             <TinyGlassDemo />
+          ) : activeDemo === 'sdf-overlap' ? (
+            <SdfOverlapDemo />
           ) : activeDemo === 'layout-simple' ? (
             <SimpleLayoutSceneDemo />
           ) : activeDemo === 'dom-measurement' ? (
