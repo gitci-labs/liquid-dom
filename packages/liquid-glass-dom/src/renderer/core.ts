@@ -600,6 +600,11 @@ export class WebGpuGlassCore {
     return true
   }
 
+  /** Returns whether rendering this container will add a shadow composition pass. */
+  private shouldRenderShadow(targetContainer: Container) {
+    return targetContainer.shadowColor.a > 0 && Boolean(this.shapesBuffer?.buffer) && Boolean(this.targets)
+  }
+
   /** Renders and queues copy commands for one backdrop metrics target. */
   private renderBackdropMetrics(
     encoder: GPUCommandEncoder,
@@ -793,15 +798,25 @@ export class WebGpuGlassCore {
 
       const packedShapes = this.packShapes(entry.child, entry.transform)
       this.writeGlobals(entry.child, packedShapes.shapeCount)
-      const blurredBackdrop = renderAdaptiveBlur({
+      const blurRadiusPx = entry.child.blur * this.currentDpr
+      let blurredBackdrop = renderAdaptiveBlur({
         device: this.device,
         sampler: this.sampler,
         encoder: composer.encoder,
         source: composer.current,
-        radiusPx: entry.child.blur * this.currentDpr,
+        radiusPx: blurRadiusPx,
         chain: this.targets.backdropBlur,
         resources: this.backdropBlurResources,
       })
+      if (blurRadiusPx <= 0 && this.shouldRenderShadow(entry.child)) {
+        // With zero blur the "blurred" backdrop is the sharp scene texture.
+        // The shadow pass below swaps the ping-pong targets before the glass
+        // pass, which would otherwise make that texture become the glass render
+        // target. Snapshot it into the blur chain so the glass pass never reads
+        // from the same texture it writes to.
+        blurredBackdrop = this.targets.backdropBlur.levels[0].pong
+        this.blitTexture(composer.encoder, composer.current, blurredBackdrop)
+      }
       const displacementField = this.renderDisplacementField(composer.encoder, entry.child)
       if (!displacementField) {
         continue
