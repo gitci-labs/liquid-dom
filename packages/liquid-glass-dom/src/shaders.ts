@@ -196,6 +196,14 @@ fn hardUnion(left: SdfSample, right: SdfSample) -> SdfSample {
   return right;
 }
 
+fn surfaceExposure(distanceToOtherShape: f32, exposureBand: f32) -> f32 {
+  // A projected surface exactly on the other shape's boundary is still exposed.
+  // Only surfaces that are meaningfully inside the other side of the hard union
+  // should fade out; using 0 as the upper edge keeps coincident and concave
+  // overlap boundaries at full blend radius instead of collapsing the fillet.
+  return smoothstep(-exposureBand, 0.0, distanceToOtherShape);
+}
+
 fn smoothUnion(left: SdfSample, right: SdfSample, smoothing: f32, exposure: f32) -> SdfSample {
   // Identical or nested shapes have nearly aligned normals; smoothing those cases
   // would only expand the silhouette. Diverging normals indicate two exposed
@@ -305,15 +313,13 @@ fn sceneSdfSample(pos: vec2f, shapeCount: u32, smoothing: f32) -> SdfSample {
       let exposureBand = max(smoothing * EXPOSURE_BAND_SCALE, MIN_EXPOSURE_BAND_PX);
       let resultSurfacePos = pos - result.distance * result.gradient;
       let nextSurfacePos = pos - nextSample.distance * nextSample.gradient;
-      let resultSurfaceExposure = smoothstep(
-        -exposureBand,
-        exposureBand,
+      let resultSurfaceExposure = surfaceExposure(
         shapeDistance(shapes[i], resultSurfacePos),
-      );
-      let nextSurfaceExposure = smoothstep(
-        -exposureBand,
         exposureBand,
+      );
+      let nextSurfaceExposure = surfaceExposure(
         sceneHardSdfPrefix(nextSurfacePos, i),
+        exposureBand,
       );
       result = smoothUnion(result, nextSample, smoothing, resultSurfaceExposure * nextSurfaceExposure);
     }
