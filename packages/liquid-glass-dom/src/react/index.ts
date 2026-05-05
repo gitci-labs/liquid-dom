@@ -1,5 +1,6 @@
 export {
   LayoutCanvas,
+  LayoutSceneRoot,
   useFrame,
   useAnimate,
   useInvalidateFrame,
@@ -53,6 +54,8 @@ export type {
   HtmlRef,
   LayoutCanvasProps,
   LayoutCanvasRef,
+  LayoutSceneRootProps,
+  LayoutSceneRootRef,
   OverlayProps,
   OverlayRef,
   PaddingProps,

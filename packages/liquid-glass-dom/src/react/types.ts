@@ -90,6 +90,15 @@ export type LayoutCanvasRef = {
   invalidateFrame: () => void
 }
 
+/** Imperative handle exposed by {@link LayoutSceneRoot}. */
+export type LayoutSceneRootRef = {
+  readonly layoutScene: LayoutScene
+  readonly scene: LayoutScene['scene']
+  update: (proposal: ProposedSize, delta?: number) => void
+  invalidateLayout: () => void
+  invalidateFrame: () => void
+}
+
 export type HStackRef = LayoutHStack
 export type VStackRef = LayoutVStack
 export type FrameRef = LayoutFrame
@@ -124,6 +133,13 @@ export type LayoutCanvasProps = ChildrenProp & RefProp<LayoutCanvasRef> & {
   proposal?: ProposedSize
   frameloop?: FrameLoopMode
   onError?: (error: unknown) => void
+}
+
+export type LayoutSceneRootProps = ChildrenProp & RefProp<LayoutSceneRootRef> & {
+  /** Called when the retained scene needs a new frame without a layout pass. */
+  onInvalidateFrame?: () => void
+  /** Called when the retained scene needs layout before the next frame. */
+  onInvalidateLayout?: () => void
 }
 
 export type HStackProps = ChildrenProp & RefProp<HStackRef> & StackOptions & TransitionProp<StackOptions>

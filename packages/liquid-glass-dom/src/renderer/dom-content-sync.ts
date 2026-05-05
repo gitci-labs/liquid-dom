@@ -2,7 +2,6 @@ import {
   invertMatrix,
   multiplyMatrices,
   scaleOutputMatrix,
-  type Matrix2D,
 } from '../matrix'
 import { Glass, Html, type TraversedSceneLayer } from '../scene'
 import {
@@ -20,6 +19,7 @@ import { copyTextureRegion } from './gpu-targets'
 import { matrixToCssTransform, type FlattenedContainer } from './interaction'
 import { getSortedGlassHtmlLayers, getSortedGlassLayers } from './scene-order'
 import { ContentDataLayout } from './shader-layouts'
+import type { GlassContentRange, SceneHtmlEntry } from './content-source'
 export type { FlattenedContainer } from './interaction'
 
 /** Typed GPU buffer used for glass content atlas entries. */
@@ -38,29 +38,6 @@ type GPUQueueWithElementCopy = GPUQueue & {
 /** Paint event payload emitted by canvas layout subtree updates. */
 type CanvasPaintEvent = Event & {
   changedElements?: readonly Element[]
-}
-
-/** Runtime texture and transform state for one scene-attached HTML node. */
-export type SceneHtmlEntry = {
-  html: Html
-  texture: GPUTexture | null
-  elementVersion: number
-  width: number
-  height: number
-  deviceWidth: number
-  deviceHeight: number
-  copiedDeviceWidth: number
-  copiedDeviceHeight: number
-  textureWidth: number
-  textureHeight: number
-  transform: Matrix2D
-  inverseTransform: Matrix2D | null
-}
-
-/** Storage-buffer range for the HTML content entries attached to one glass. */
-type GlassContentRange = {
-  start: number
-  count: number
 }
 
 /** Previous atlas location and copied size used when copying forward on repack. */
@@ -236,6 +213,17 @@ export class DomContentSync {
     }
 
     if (shouldCopyContent) {
+      this.copyGlassContentAtlas()
+    }
+  }
+
+  /** Attempts any pending DOM-to-texture copies immediately. */
+  copyPending() {
+    if (this.needsSceneHtmlCopy) {
+      this.copySceneHtmlTextures()
+    }
+
+    if (this.needsContentCopy) {
       this.copyGlassContentAtlas()
     }
   }

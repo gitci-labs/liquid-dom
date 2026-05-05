@@ -132,7 +132,7 @@ function OrderedChildren({ children }: ChildrenProp) {
 export function useRequiredRoot() {
   const root = useContext(RootContext)
   if (!root) {
-    throw new Error('liquid-glass-dom/react components must be rendered inside LayoutCanvas.')
+    throw new Error('liquid-glass-dom/react components must be rendered inside LayoutCanvas or LayoutSceneRoot.')
   }
   return root
 }

@@ -18,6 +18,7 @@ import type {
   FrameLoopEntry,
   FrameState,
   LayoutCanvasProps,
+  LayoutSceneRootProps,
 } from './types'
 import {
   RootContext,
@@ -51,6 +52,84 @@ function applyStyle(element: HTMLElement, style: CSSProperties | undefined) {
   }
 
   Object.assign(element.style, style)
+}
+
+/** Headless React root that builds a retained layout scene without owning a renderer. */
+export function LayoutSceneRoot({
+  ref,
+  children,
+  onInvalidateFrame,
+  onInvalidateLayout,
+}: LayoutSceneRootProps) {
+  const layoutScene = useStableNode(() => new LayoutScene())
+  const animationManager = useStableNode(() => new AnimationManager())
+  const layoutDirtyRef = useRef(true)
+  const frameDirtyRef = useRef(true)
+  const proposalRef = useRef<ProposedSize | null>(null)
+  const onInvalidateFrameRef = useRef(onInvalidateFrame)
+  const onInvalidateLayoutRef = useRef(onInvalidateLayout)
+  onInvalidateFrameRef.current = onInvalidateFrame
+  onInvalidateLayoutRef.current = onInvalidateLayout
+
+  const invalidateFrame = useCallback(() => {
+    frameDirtyRef.current = true
+    onInvalidateFrameRef.current?.()
+  }, [])
+
+  const invalidateLayout = useCallback(() => {
+    layoutDirtyRef.current = true
+    frameDirtyRef.current = true
+    onInvalidateLayoutRef.current?.()
+  }, [])
+
+  const rootParent = useOrderedChildRegistrar(
+    useCallback((children) => syncOrderedChildren(layoutScene, children), [layoutScene]),
+  )
+  const rootContextValue = useMemo(() => ({
+    layoutScene,
+    animationManager,
+    getRenderer: () => null,
+    invalidateLayout,
+    invalidateFrame,
+    registerFrame: () => () => undefined,
+  }), [layoutScene, animationManager, invalidateLayout, invalidateFrame])
+
+  useImperativeHandle(ref, () => ({
+    layoutScene,
+    scene: layoutScene.scene,
+    update(proposal, delta = 0) {
+      animationManager.tick(delta)
+      const proposalChanged =
+        !proposalRef.current ||
+        proposalRef.current.width !== proposal.width ||
+        proposalRef.current.height !== proposal.height
+      if (layoutDirtyRef.current || proposalChanged) {
+        layoutScene.layout(proposal)
+        proposalRef.current = proposal
+        layoutDirtyRef.current = false
+      }
+      frameDirtyRef.current = false
+      if (animationManager.active) {
+        onInvalidateFrameRef.current?.()
+      }
+    },
+    invalidateLayout,
+    invalidateFrame,
+  }), [layoutScene, animationManager, invalidateLayout, invalidateFrame])
+
+  useLayoutEffect(() => layoutScene.addInvalidationListener((invalidation) => {
+    if (invalidation.kind === 'layout') {
+      invalidateLayout()
+    } else {
+      invalidateFrame()
+    }
+  }), [layoutScene, invalidateLayout, invalidateFrame])
+
+  return (
+    <RootContext.Provider value={rootContextValue}>
+      {renderNodeChildren(rootParent, children)}
+    </RootContext.Provider>
+  )
 }
 
 /** Root component that owns a layout scene, renderer, canvas, and frame loop. */

@@ -66,6 +66,22 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
 }
 `
 
+// Copies or resolves an external texture into the core's render graph or final
+// output texture. It uses a render pass instead of copyTextureToTexture so the
+// destination only needs RENDER_ATTACHMENT usage, which is important when a host
+// renderer owns the canvas texture.
+export const TEXTURE_BLIT_SHADER = /* wgsl */ `
+${FULLSCREEN_VERTEX}
+
+@group(0) @binding(0) var blitSampler: sampler;
+@group(0) @binding(1) var inputTexture: texture_2d<f32>;
+
+@fragment
+fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
+  return textureSampleLevel(inputTexture, blitSampler, in.uv, 0.0);
+}
+`
+
 // Shared adaptive blur kernel for backdrop color and premultiplied displacement
 // fields. The constants are generated from a sigma=4, 17-tap Gaussian over
 // [-8..8]. Neighboring same-side taps are paired into one bilinear-filtered

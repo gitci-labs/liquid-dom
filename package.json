@@ -5,6 +5,9 @@
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm --parallel --filter liquid-glass-dom --filter editor dev",
-    "dev:minimal": "pnpm --parallel --filter liquid-glass-dom --filter minimal dev"
+    "dev:minimal": "pnpm --parallel --filter liquid-glass-dom --filter minimal dev",
+    "dev:three": "pnpm --parallel --filter liquid-glass-dom --filter liquid-glass-three --filter three-integration dev",
+    "dev:three-react": "pnpm --parallel --filter liquid-glass-dom --filter liquid-glass-three --filter three-react-integration dev",
+    "dev:three-r3f": "pnpm --parallel --filter liquid-glass-dom --filter liquid-glass-three --filter liquid-glass-r3f --filter three-r3f-integration dev"
   }
 }

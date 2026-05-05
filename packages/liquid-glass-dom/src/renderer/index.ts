@@ -1,78 +1,31 @@
-import {
-  getMinimumScale,
-  invertMatrix,
-  multiplyMatrices,
-  scaleOutputMatrix,
-  transformPoint,
-  type Matrix2D,
-} from '../matrix'
-import { BackdropMetricsTracker, type BackdropMetricsState } from './backdrop-metrics-state'
-import {
-  DomContentSync,
-  getCopiedCssSize,
-  getTextureUvScale,
-  type SceneHtmlEntry,
-} from './dom-content-sync'
-import { GPU_BUFFER_USAGE, GPU_TEXTURE_USAGE } from './gpu-constants'
-import {
-  clearRenderTarget,
-  createPipelineBindGroup,
-  drawFullscreenPass,
-  PingPongComposer,
-} from './gpu-pass'
-import {
-  GpuStructArrayBuffer,
-  GpuStructBuffer,
-  type GpuStructDefinition,
-} from './gpu-layout'
-import {
-  createAdaptiveBlurTargetChain,
-  copyTextureRegion,
-  createRenderTarget,
-  destroyTargets,
-  type RenderTargetSet,
-} from './gpu-targets'
-import {
-  createAdaptiveBlurResources,
-  destroyAdaptiveBlurResources,
-  renderAdaptiveBlur,
-  type AdaptiveBlurResources,
-} from './adaptive-blur'
-import {
-  BACKDROP_METRICS_BYTES_PER_ROW,
-  BACKDROP_METRICS_SIZE,
-  createEmptyBounds,
-  expandBounds,
-  hasBounds,
-  type BoundsRect,
-} from './metrics'
-import {
-  BackdropMetricsBoundsLayout,
-  GlobalsLayout,
-  HtmlCompositeParamsLayout,
-  ShapeDataLayout,
-} from './shader-layouts'
+import { Container, Scene } from '../scene'
+import { DomContentSync } from './dom-content-sync'
+import { GPU_TEXTURE_USAGE } from './gpu-constants'
+import { clearRenderTarget } from './gpu-pass'
+import { copyTextureRegion, createRenderTarget } from './gpu-targets'
 import {
   getHtmlHostOrder,
   getLayerContainers,
-  getSortedGlassLayers,
   getSortedSceneLayers,
 } from './scene-order'
-import { Container, Html, Scene } from '../scene'
-import {
-  DISPLACEMENT_FIELD_SHADER,
-  GLASS_SHADER,
-  HTML_COMPOSITE_SHADER,
-  METRICS_SHADER,
-  SHADOW_COMPOSITE_SHADER,
-  SHADOW_MASK_SHADER,
-} from '../shaders'
 import { PointerController } from './pointer-controller'
-import type { SpecularWidth, SurfaceProfile } from '../types'
+import {
+  WebGpuGlassCore,
+  resolveSpecularWidthPx,
+  type WebGpuGlassCoreRenderOptions,
+  type WebGpuGlassCoreInit,
+} from './core'
+import { WebGpuDomContentSource, type WebGpuDomContentSourceInit } from './dom-content-source'
+import type { WebGpuGlassContentSource } from './content-source'
 
-/** Resolves public specular-width semantics into the shader's device-pixel space. */
-export function resolveSpecularWidthPx(specularWidth: SpecularWidth, dpr: number) {
-  return specularWidth === 'hairline' ? 1 : specularWidth * dpr
+export {
+  WebGpuGlassCore,
+  WebGpuDomContentSource,
+  resolveSpecularWidthPx,
+  type WebGpuGlassCoreInit,
+  type WebGpuGlassCoreRenderOptions,
+  type WebGpuGlassContentSource,
+  type WebGpuDomContentSourceInit,
 }
 
 /**
@@ -85,35 +38,12 @@ type RendererInit = {
   maxDpr?: number
 }
 
-type PackedShapesResult = {
-  shapeCount: number
-  bounds: BoundsRect | null
-}
-
-type GlobalsBuffer = GpuStructBuffer<GpuStructDefinition<typeof GlobalsLayout>>
-type ShapeDataBuffer = GpuStructArrayBuffer<GpuStructDefinition<typeof ShapeDataLayout>>
-type BackdropMetricsBoundsBuffer = GpuStructBuffer<GpuStructDefinition<typeof BackdropMetricsBoundsLayout>>
-type HtmlCompositeParamsBuffer = GpuStructBuffer<GpuStructDefinition<typeof HtmlCompositeParamsLayout>>
-const DISPLACEMENT_FIELD_FORMAT = 'rgba16float' satisfies GPUTextureFormat
-const SHADOW_MASK_FORMAT = 'rgba8unorm' satisfies GPUTextureFormat
-
-/** Maps a public surface profile string to the shader enum value. */
-function getSurfaceProfileIndex(profile: SurfaceProfile) {
-  if (profile === 'convex') {
-    return 0
-  }
-  if (profile === 'concave') {
-    return 1
-  }
-  return 2
-}
-
-
 /**
  * Imperative WebGPU renderer for a liquid-glass scene graph.
  *
- * The renderer owns a canvas and a DOM subtree root that is copied into a GPU
- * texture and used as the backdrop for blur, refraction, reflection, and glass tint.
+ * The renderer owns a canvas and a DOM subtree root that is copied into GPU
+ * textures. Rendering itself is delegated to {@link WebGpuGlassCore}, which can
+ * also be hosted by non-DOM renderers.
  */
 export class Renderer {
   /** Scene currently rendered by this renderer. */
@@ -124,7 +54,6 @@ export class Renderer {
   maxDpr: number
 
   private readonly targetCanvas: HTMLCanvasElement
-  private readonly backdropMetrics = new BackdropMetricsTracker(() => this.destroyed)
   private readonly domContent: DomContentSync
   private readonly pointerController: PointerController
 
@@ -140,27 +69,13 @@ export class Renderer {
   private device: GPUDevice | null = null
   private context: GPUCanvasContext | null = null
   private presentationFormat: GPUTextureFormat | null = null
-  private globalsBuffer: GlobalsBuffer | null = null
-  private shapesBuffer: ShapeDataBuffer | null = null
-  private backdropMetricsBoundsBuffer: BackdropMetricsBoundsBuffer | null = null
-  private htmlCompositeParamsBuffer: HtmlCompositeParamsBuffer | null = null
-  private sampler: GPUSampler | null = null
-  private backdropBlurResources: AdaptiveBlurResources | null = null
-  private displacementBlurResources: AdaptiveBlurResources | null = null
-  private shadowBlurResources: AdaptiveBlurResources | null = null
-  private displacementFieldPipeline: GPURenderPipeline | null = null
-  private shadowMaskPipeline: GPURenderPipeline | null = null
-  private shadowCompositePipeline: GPURenderPipeline | null = null
-  private glassPipeline: GPURenderPipeline | null = null
-  private htmlCompositePipeline: GPURenderPipeline | null = null
-  private backdropMetricsPipeline: GPURenderPipeline | null = null
-  private targets: RenderTargetSet | null = null
+  private core: WebGpuGlassCore | null = null
+  private canvasConfigured = false
   private lastFrameTexture: GPUTexture | null = null
-  private backdropMetricsTarget: GPUTexture | null = null
 
   /** Handles canvas paint events by copying managed DOM content into GPU textures. */
   private readonly handlePaintEvent = (event: Event) => {
-    if (this.destroyed || !this.device || !this.targets) {
+    if (this.destroyed || !this.core) {
       return
     }
 
@@ -209,23 +124,17 @@ export class Renderer {
     })
   }
 
-  /**
-   * Enables or disables cached backdrop metrics for a container.
-   */
+  /** Enables or disables cached backdrop metrics for a container. */
   setBackdropMetricsTracking(container: Container, enabled: boolean) {
-    this.backdropMetrics.setTracking(container, enabled)
+    this.core?.setBackdropMetricsTracking(container, enabled)
   }
 
-  /**
-   * Returns the latest completed cached backdrop metrics for a tracked container.
-   */
+  /** Returns the latest completed cached backdrop metrics for a tracked container. */
   getBackdropMetrics(container: Container) {
-    return this.backdropMetrics.getMetrics(container)
+    return this.core?.getBackdropMetrics(container) ?? null
   }
 
-  /**
-   * Renders one frame if the renderer is initialized and a backdrop snapshot is available.
-   */
+  /** Renders one frame if the renderer is initialized. */
   render() {
     if (this.destroyed) {
       return
@@ -243,9 +152,7 @@ export class Renderer {
     this.drawFrame(layers)
   }
 
-  /**
-   * Tears down observers, event listeners, and GPU resources owned by this renderer.
-   */
+  /** Tears down observers, event listeners, and GPU resources owned by this renderer. */
   destroy() {
     if (this.destroyed) {
       return
@@ -261,23 +168,10 @@ export class Renderer {
     this.unsubscribeSceneMutations?.()
     this.unsubscribeSceneMutations = null
     this.resizeObserver?.disconnect()
-    destroyTargets(this.targets)
-    this.targets = null
+    this.core?.destroy()
+    this.core = null
     this.lastFrameTexture?.destroy()
     this.lastFrameTexture = null
-    this.backdropMetricsTarget?.destroy()
-    this.backdropMetricsTarget = null
-    this.globalsBuffer?.destroy()
-    this.shapesBuffer?.destroy()
-    destroyAdaptiveBlurResources(this.backdropBlurResources)
-    destroyAdaptiveBlurResources(this.displacementBlurResources)
-    destroyAdaptiveBlurResources(this.shadowBlurResources)
-    this.backdropBlurResources = null
-    this.displacementBlurResources = null
-    this.shadowBlurResources = null
-    this.backdropMetricsBoundsBuffer?.destroy()
-    this.htmlCompositeParamsBuffer?.destroy()
-    this.backdropMetrics.destroy()
     this.domContent.destroy()
     this.pointerController.clear()
   }
@@ -301,147 +195,13 @@ export class Renderer {
     }
 
     const presentationFormat = gpuNavigator.gpu.getPreferredCanvasFormat()
-    const sampler = device.createSampler({
-      magFilter: 'linear',
-      minFilter: 'linear',
-      addressModeU: 'clamp-to-edge',
-      addressModeV: 'clamp-to-edge',
-    })
-    const uniformBufferUsage = GPU_BUFFER_USAGE.UNIFORM | GPU_BUFFER_USAGE.COPY_DST
-
-    const globalsBuffer = new GpuStructBuffer(device, GlobalsLayout, uniformBufferUsage)
-    const backdropMetricsBoundsBuffer = new GpuStructBuffer(device, BackdropMetricsBoundsLayout, uniformBufferUsage)
-    const htmlCompositeParamsBuffer = new GpuStructBuffer(device, HtmlCompositeParamsLayout, uniformBufferUsage)
-    const backdropBlurResources = createAdaptiveBlurResources(device, presentationFormat)
-    const displacementBlurResources = createAdaptiveBlurResources(device, DISPLACEMENT_FIELD_FORMAT)
-    const shadowBlurResources = createAdaptiveBlurResources(device, SHADOW_MASK_FORMAT)
-
-    const displacementFieldPipeline = device.createRenderPipeline({
-      layout: 'auto',
-      vertex: {
-        module: device.createShaderModule({ code: DISPLACEMENT_FIELD_SHADER }),
-        entryPoint: 'vertexMain',
-      },
-      fragment: {
-        module: device.createShaderModule({ code: DISPLACEMENT_FIELD_SHADER }),
-        entryPoint: 'fragmentMain',
-        targets: [{ format: DISPLACEMENT_FIELD_FORMAT }],
-      },
-      primitive: {
-        topology: 'triangle-list',
-      },
-    })
-
-    const glassPipeline = device.createRenderPipeline({
-      layout: 'auto',
-      vertex: {
-        module: device.createShaderModule({ code: GLASS_SHADER }),
-        entryPoint: 'vertexMain',
-      },
-      fragment: {
-        module: device.createShaderModule({ code: GLASS_SHADER }),
-        entryPoint: 'fragmentMain',
-        targets: [{ format: presentationFormat }],
-      },
-      primitive: {
-        topology: 'triangle-list',
-      },
-    })
-
-    const shadowMaskPipeline = device.createRenderPipeline({
-      layout: 'auto',
-      vertex: {
-        module: device.createShaderModule({ code: SHADOW_MASK_SHADER }),
-        entryPoint: 'vertexMain',
-      },
-      fragment: {
-        module: device.createShaderModule({ code: SHADOW_MASK_SHADER }),
-        entryPoint: 'fragmentMain',
-        targets: [{ format: SHADOW_MASK_FORMAT }],
-      },
-      primitive: {
-        topology: 'triangle-list',
-      },
-    })
-
-    const shadowCompositePipeline = device.createRenderPipeline({
-      layout: 'auto',
-      vertex: {
-        module: device.createShaderModule({ code: SHADOW_COMPOSITE_SHADER }),
-        entryPoint: 'vertexMain',
-      },
-      fragment: {
-        module: device.createShaderModule({ code: SHADOW_COMPOSITE_SHADER }),
-        entryPoint: 'fragmentMain',
-        targets: [{ format: presentationFormat }],
-      },
-      primitive: {
-        topology: 'triangle-list',
-      },
-    })
-
-    const htmlCompositePipeline = device.createRenderPipeline({
-      layout: 'auto',
-      vertex: {
-        module: device.createShaderModule({ code: HTML_COMPOSITE_SHADER }),
-        entryPoint: 'vertexMain',
-      },
-      fragment: {
-        module: device.createShaderModule({ code: HTML_COMPOSITE_SHADER }),
-        entryPoint: 'fragmentMain',
-        targets: [{ format: presentationFormat }],
-      },
-      primitive: {
-        topology: 'triangle-list',
-      },
-    })
-
-    const backdropMetricsPipeline = device.createRenderPipeline({
-      layout: 'auto',
-      vertex: {
-        module: device.createShaderModule({ code: METRICS_SHADER }),
-        entryPoint: 'vertexMain',
-      },
-      fragment: {
-        module: device.createShaderModule({ code: METRICS_SHADER }),
-        entryPoint: 'fragmentMain',
-        targets: [{ format: 'rgba8unorm' }],
-      },
-      primitive: {
-        topology: 'triangle-list',
-      },
-    })
-
-    const backdropMetricsTarget = device.createTexture({
-      size: {
-        width: BACKDROP_METRICS_SIZE,
-        height: BACKDROP_METRICS_SIZE,
-        depthOrArrayLayers: 1,
-      },
-      format: 'rgba8unorm',
-      usage: GPU_TEXTURE_USAGE.RENDER_ATTACHMENT | GPU_TEXTURE_USAGE.COPY_SRC,
-    })
-
     this.device = device
     this.context = context
     this.presentationFormat = presentationFormat
-    this.sampler = sampler
-    this.globalsBuffer = globalsBuffer
-    this.backdropMetricsBoundsBuffer = backdropMetricsBoundsBuffer
-    this.htmlCompositeParamsBuffer = htmlCompositeParamsBuffer
-    this.backdropBlurResources = backdropBlurResources
-    this.displacementBlurResources = displacementBlurResources
-    this.shadowBlurResources = shadowBlurResources
-    this.displacementFieldPipeline = displacementFieldPipeline
-    this.shadowMaskPipeline = shadowMaskPipeline
-    this.shadowCompositePipeline = shadowCompositePipeline
-    this.glassPipeline = glassPipeline
-    this.htmlCompositePipeline = htmlCompositePipeline
-    this.backdropMetricsPipeline = backdropMetricsPipeline
-    this.backdropMetricsTarget = backdropMetricsTarget
-    this.backdropMetrics.setDevice(device)
+    this.core = new WebGpuGlassCore({ device, format: presentationFormat })
     this.domContent.setDevice(device, presentationFormat)
     this.initialized = true
+    this.syncCanvasSize()
 
     this.resizeObserver = new ResizeObserver(() => {
       this.syncCanvasSize()
@@ -464,56 +224,61 @@ export class Renderer {
     this.currentDpr = dpr
 
     if (
+      !this.canvasConfigured ||
       this.targetCanvas.width !== nextWidth ||
-      this.targetCanvas.height !== nextHeight ||
-      !this.targets
+      this.targetCanvas.height !== nextHeight
     ) {
       const previousLastFrame = this.lastFrameTexture
-      const previousLastFrameWidth = this.targetCanvas.width
-      const previousLastFrameHeight = this.targetCanvas.height
-
+      const previousWidth = this.targetCanvas.width
+      const previousHeight = this.targetCanvas.height
       this.targetCanvas.width = nextWidth
       this.targetCanvas.height = nextHeight
-      destroyTargets(this.targets)
-      this.targets = {
-        backdropBlur: createAdaptiveBlurTargetChain(this.device, this.presentationFormat, nextWidth, nextHeight),
-        displacementBlur: createAdaptiveBlurTargetChain(this.device, DISPLACEMENT_FIELD_FORMAT, nextWidth, nextHeight),
-        shadowBlur: createAdaptiveBlurTargetChain(this.device, SHADOW_MASK_FORMAT, nextWidth, nextHeight),
-        sceneA: createRenderTarget(this.device, this.presentationFormat, nextWidth, nextHeight),
-        sceneB: createRenderTarget(this.device, this.presentationFormat, nextWidth, nextHeight),
-      }
-
-      this.lastFrameTexture = createRenderTarget(this.device, this.presentationFormat, nextWidth, nextHeight)
-
       this.context.configure({
         device: this.device,
         format: this.presentationFormat,
-        usage: GPU_TEXTURE_USAGE.RENDER_ATTACHMENT | GPU_TEXTURE_USAGE.COPY_DST,
+        usage: GPU_TEXTURE_USAGE.RENDER_ATTACHMENT | GPU_TEXTURE_USAGE.COPY_SRC | GPU_TEXTURE_USAGE.COPY_DST,
         alphaMode: 'opaque',
       })
-
-      this.preservePreviousFrameAfterResize(previousLastFrame, previousLastFrameWidth, previousLastFrameHeight)
+      this.canvasConfigured = true
+      this.lastFrameTexture = createRenderTarget(this.device, this.presentationFormat, nextWidth, nextHeight)
+      this.preservePreviousFrameAfterResize(previousLastFrame, previousWidth, previousHeight)
       previousLastFrame?.destroy()
     }
 
     this.syncSceneNow()
   }
 
-  /** Ensures the shape storage buffer can hold the active glass count. */
-  private ensureShapesBuffer(requiredCount: number) {
-    if (!this.device) {
+  /** Paints the previous completed frame into the newly configured canvas target. */
+  private preservePreviousFrameAfterResize(previousFrame: GPUTexture | null, previousWidth: number, previousHeight: number) {
+    if (
+      !previousFrame ||
+      !this.device ||
+      !this.context ||
+      !this.lastFrameTexture ||
+      previousWidth <= 0 ||
+      previousHeight <= 0
+    ) {
       return
     }
 
-    if (!this.shapesBuffer) {
-      this.shapesBuffer = new GpuStructArrayBuffer(
-        this.device,
-        ShapeDataLayout,
-        GPU_BUFFER_USAGE.STORAGE | GPU_BUFFER_USAGE.COPY_DST,
-      )
+    const copyWidth = Math.min(previousWidth, this.targetCanvas.width)
+    const copyHeight = Math.min(previousHeight, this.targetCanvas.height)
+    const encoder = this.device.createCommandEncoder()
+    const currentTexture = this.context.getCurrentTexture()
+    const region = {
+      sourceX: 0,
+      sourceY: 0,
+      destinationX: 0,
+      destinationY: 0,
+      width: copyWidth,
+      height: copyHeight,
     }
 
-    this.shapesBuffer.ensureCapacity(requiredCount)
+    clearRenderTarget(encoder, this.lastFrameTexture)
+    clearRenderTarget(encoder, currentTexture)
+    copyTextureRegion(encoder, previousFrame, this.lastFrameTexture, region)
+    copyTextureRegion(encoder, previousFrame, currentTexture, region)
+    this.device.queue.submit([encoder.finish()])
   }
 
   /** Queues scene-derived DOM and pointer state synchronization on a microtask. */
@@ -556,466 +321,31 @@ export class Renderer {
     }
   }
 
-  /** Writes per-container global shader parameters. */
-  private writeGlobals(container: Container, shapeCount: number) {
-    if (!this.device || !this.globalsBuffer) {
-      return
-    }
-
-    const width = this.targetCanvas.width
-    const height = this.targetCanvas.height
-    const dpr = this.currentDpr
-
-    this.globalsBuffer.write({
-      canvas: {
-        width,
-        height,
-      },
-      shape: {
-        smoothing: container.spacing * dpr,
-        bezelWidth: container.bezelWidth * dpr,
-        shapeCount,
-        surfaceProfile: getSurfaceProfileIndex(container.surfaceProfile),
-      },
-      glass: {
-        thickness: container.thickness * dpr,
-        displacementFactor: container.displacementFactor,
-        ior: container.ior,
-        dispersion: container.dispersion,
-      },
-      content: {
-        ior: container.contentIor,
-        depth: container.contentDepth * dpr,
-      },
-      lighting: {
-        x: Math.sin(container.lightDirection),
-        y: -Math.cos(container.lightDirection),
-      },
-      specular: {
-        strength: container.specularStrength,
-        width: resolveSpecularWidthPx(container.specularWidth, dpr),
-        sharpness: container.specularSharpness,
-        opacity: container.specularOpacity,
-      },
-      specularSecondary: {
-        oppositeStrength: container.oppositeSpecularStrength,
-        falloff: container.specularFalloff,
-        reflectionOffset: container.reflectionOffset * dpr,
-      },
-      tint: {
-        r: container.tint.r,
-        g: container.tint.g,
-        b: container.tint.b,
-        a: container.tint.a,
-      },
-      shadow: {
-        offsetX: container.shadowOffsetX * dpr,
-        offsetY: container.shadowOffsetY * dpr,
-        spread: container.shadowSpread * dpr,
-        blur: container.shadowBlur * dpr,
-      },
-      shadowColor: {
-        r: container.shadowColor.r,
-        g: container.shadowColor.g,
-        b: container.shadowColor.b,
-        a: container.shadowColor.a,
-      },
-      debug: {
-        displacement: container.debugDisplacement ? 1 : 0,
-      },
-    })
-  }
-
-  /** Writes the device-pixel bounds sampled by the backdrop metrics pass. */
-  private writeBackdropMetricsBounds(bounds: BoundsRect) {
-    if (!this.device || !this.backdropMetricsBoundsBuffer) {
-      return
-    }
-
-    this.backdropMetricsBoundsBuffer.write({
-      bounds: {
-        minX: bounds.minX,
-        minY: bounds.minY,
-        maxX: bounds.maxX,
-        maxY: bounds.maxY,
-      },
-    })
-  }
-
-  /** Packs visible glass shapes into the storage buffer and accumulates bounds. */
-  private packShapes(container: Container, containerTransform: Matrix2D): PackedShapesResult {
-    const dpr = this.currentDpr
-    const glassLayers = getSortedGlassLayers(container)
-    const bounds = createEmptyBounds()
-    let activeCount = 0
-
-    this.ensureShapesBuffer(glassLayers.length)
-    const shapesBuffer = this.shapesBuffer
-
-    for (const glassLayer of glassLayers) {
-      const glass = glassLayer.glass
-      const worldCss = multiplyMatrices(containerTransform, glassLayer.transform)
-      const worldDevice = scaleOutputMatrix(worldCss, dpr)
-      const inverse = invertMatrix(worldDevice)
-      if (!inverse) {
-        continue
-      }
-
-      const topLeft = transformPoint(worldDevice, 0, 0)
-      const topRight = transformPoint(worldDevice, glass.width, 0)
-      const bottomLeft = transformPoint(worldDevice, 0, glass.height)
-      const bottomRight = transformPoint(worldDevice, glass.width, glass.height)
-      expandBounds(bounds, topLeft.x, topLeft.y)
-      expandBounds(bounds, topRight.x, topRight.y)
-      expandBounds(bounds, bottomLeft.x, bottomLeft.y)
-      expandBounds(bounds, bottomRight.x, bottomRight.y)
-
-      const contentRange = this.domContent.getGlassContentRange(glass)
-      const halfWidth = glass.width * 0.5
-      const halfHeight = glass.height * 0.5
-      shapesBuffer?.writeAt(activeCount, {
-        inverse0: {
-          a: inverse.a,
-          c: inverse.c,
-          e: inverse.e,
-          minimumScale: getMinimumScale(worldDevice),
-        },
-        inverse1: {
-          b: inverse.b,
-          d: inverse.d,
-          f: inverse.f,
-          cornerRadius: glass.cornerRadius,
-        },
-        geometry: {
-          halfWidth,
-          halfHeight,
-          cornerTransitionSpeed: glass.cornerTransitionSpeed,
-        },
-        contentRange: {
-          start: contentRange?.start ?? 0,
-          count: contentRange?.count ?? 0,
-        },
-      })
-
-      activeCount += 1
-    }
-
-    shapesBuffer?.upload(activeCount)
-
-    return {
-      shapeCount: activeCount,
-      bounds: hasBounds(bounds) ? bounds : null,
-    }
-  }
-
-  /** Renders and filters the premultiplied surface field used for refraction displacement. */
-  private renderDisplacementField(encoder: GPUCommandEncoder, targetContainer: Container) {
+  /** Draws a complete frame for the provided sorted scene layers. */
+  private drawFrame(layers = getSortedSceneLayers(this.scene)) {
     if (
-      !this.device ||
-      !this.sampler ||
-      !this.displacementFieldPipeline ||
-      !this.displacementBlurResources ||
-      !this.globalsBuffer ||
-      !this.shapesBuffer?.buffer ||
-      !this.targets
-    ) {
-      return null
-    }
-
-    const rawLevel = this.targets.displacementBlur.levels[0]
-    const fieldBindGroup = createPipelineBindGroup(this.device, this.displacementFieldPipeline, [
-      { binding: 0, resource: this.globalsBuffer.bindingResource },
-      { binding: 1, resource: this.shapesBuffer.bindingResource },
-    ])
-    drawFullscreenPass(encoder, {
-      pipeline: this.displacementFieldPipeline,
-      bindGroup: fieldBindGroup,
-      target: rawLevel.ping,
-      clearValue: { r: 0, g: 0, b: 0, a: 0 },
-    })
-
-    return renderAdaptiveBlur({
-      device: this.device,
-      sampler: this.sampler,
-      encoder,
-      source: rawLevel.ping,
-      radiusPx: targetContainer.displacementBlur * this.currentDpr,
-      chain: this.targets.displacementBlur,
-      resources: this.displacementBlurResources,
-    })
-  }
-
-  /** Renders the container shadow mask, blurs it, and composites it under the glass. */
-  private renderShadow(
-    encoder: GPUCommandEncoder,
-    source: GPUTexture,
-    target: GPUTexture,
-    targetContainer: Container,
-  ) {
-    if (
-      targetContainer.shadowColor.a <= 0 ||
-      !this.device ||
-      !this.sampler ||
-      !this.shadowMaskPipeline ||
-      !this.shadowCompositePipeline ||
-      !this.shadowBlurResources ||
-      !this.globalsBuffer ||
-      !this.shapesBuffer?.buffer ||
-      !this.targets
-    ) {
-      return false
-    }
-
-    const rawLevel = this.targets.shadowBlur.levels[0]
-    const maskBindGroup = createPipelineBindGroup(this.device, this.shadowMaskPipeline, [
-      { binding: 0, resource: this.globalsBuffer.bindingResource },
-      { binding: 1, resource: this.shapesBuffer.bindingResource },
-    ])
-    drawFullscreenPass(encoder, {
-      pipeline: this.shadowMaskPipeline,
-      bindGroup: maskBindGroup,
-      target: rawLevel.ping,
-      clearValue: { r: 0, g: 0, b: 0, a: 0 },
-    })
-
-    const blurredMask = renderAdaptiveBlur({
-      device: this.device,
-      sampler: this.sampler,
-      encoder,
-      source: rawLevel.ping,
-      radiusPx: targetContainer.shadowBlur * this.currentDpr,
-      chain: this.targets.shadowBlur,
-      resources: this.shadowBlurResources,
-    })
-
-    const compositeBindGroup = createPipelineBindGroup(this.device, this.shadowCompositePipeline, [
-      { binding: 0, resource: this.sampler },
-      { binding: 1, resource: source.createView() },
-      { binding: 2, resource: blurredMask.createView() },
-      { binding: 3, resource: this.globalsBuffer.bindingResource },
-    ])
-    drawFullscreenPass(encoder, {
-      pipeline: this.shadowCompositePipeline,
-      bindGroup: compositeBindGroup,
-      target,
-    })
-
-    return true
-  }
-
-  /** Renders and queues copy commands for one backdrop metrics target. */
-  private renderBackdropMetrics(
-    encoder: GPUCommandEncoder,
-    state: BackdropMetricsState,
-    bounds: BoundsRect | null,
-    blurredBackdrop: GPUTexture,
-  ) {
-    if (
-      !this.device ||
-      !this.sampler ||
-      !this.backdropMetricsPipeline ||
-      !this.globalsBuffer ||
-      !this.shapesBuffer?.buffer ||
-      !this.backdropMetricsBoundsBuffer ||
-      !this.backdropMetricsTarget ||
-      !this.targets ||
-      !bounds ||
-      state.pendingReadback
-    ) {
-      if (!bounds && !state.pendingReadback) {
-        state.metrics = null
-      }
-      return false
-    }
-
-    this.backdropMetrics.ensureResources(state)
-    if (!state.readbackBuffer) {
-      return false
-    }
-
-    this.writeBackdropMetricsBounds(bounds)
-
-    const bindGroup = createPipelineBindGroup(this.device, this.backdropMetricsPipeline, [
-      { binding: 0, resource: this.globalsBuffer.bindingResource },
-      { binding: 1, resource: this.shapesBuffer.bindingResource },
-      { binding: 2, resource: this.sampler },
-      { binding: 3, resource: blurredBackdrop.createView() },
-      { binding: 4, resource: this.backdropMetricsBoundsBuffer.bindingResource },
-    ])
-    drawFullscreenPass(encoder, {
-      pipeline: this.backdropMetricsPipeline,
-      bindGroup,
-      target: this.backdropMetricsTarget,
-      clearValue: { r: 0, g: 0, b: 0, a: 0 },
-    })
-
-    encoder.copyTextureToBuffer(
-      { texture: this.backdropMetricsTarget },
-      {
-        buffer: state.readbackBuffer,
-        bytesPerRow: BACKDROP_METRICS_BYTES_PER_ROW,
-        rowsPerImage: BACKDROP_METRICS_SIZE,
-      },
-      {
-        width: BACKDROP_METRICS_SIZE,
-        height: BACKDROP_METRICS_SIZE,
-        depthOrArrayLayers: 1,
-      },
-    )
-
-    return true
-  }
-
-  /** Renders one container's glass shapes over the current scene texture. */
-  private renderContainer(
-    encoder: GPUCommandEncoder,
-    sharpSource: GPUTexture,
-    blurredBackdrop: GPUTexture,
-    displacementField: GPUTexture,
-    target: GPUTexture,
-  ) {
-    if (
-      !this.device ||
-      !this.sampler ||
-      !this.glassPipeline ||
-      !this.globalsBuffer ||
-      !this.shapesBuffer?.buffer ||
-      !this.targets
-    ) {
-      return
-    }
-
-    const contentEntriesBindingResource = this.domContent.contentEntriesBindingResource
-    if (!contentEntriesBindingResource) {
-      return
-    }
-
-    // The shader never reads this when all content ranges are empty, but the
-    // bind group still needs a valid texture for the fixed glass pipeline layout.
-    const contentTexture = this.domContent.atlasTexture ?? sharpSource
-
-    const bindGroup = createPipelineBindGroup(this.device, this.glassPipeline, [
-      { binding: 0, resource: this.globalsBuffer.bindingResource },
-      { binding: 1, resource: this.shapesBuffer.bindingResource },
-      { binding: 2, resource: this.sampler },
-      { binding: 3, resource: sharpSource.createView() },
-      { binding: 4, resource: blurredBackdrop.createView() },
-      { binding: 5, resource: contentTexture.createView() },
-      { binding: 6, resource: contentEntriesBindingResource },
-      { binding: 7, resource: displacementField.createView() },
-    ])
-    drawFullscreenPass(encoder, {
-      pipeline: this.glassPipeline,
-      bindGroup,
-      target,
-    })
-  }
-
-  /** Copies the previous presented frame into newly resized presentation targets. */
-  private preservePreviousFrameAfterResize(previousFrame: GPUTexture | null, previousWidth: number, previousHeight: number) {
-    if (
-      !previousFrame ||
-      !this.device ||
+      this.destroyed ||
       !this.context ||
-      !this.lastFrameTexture ||
-      previousWidth <= 0 ||
-      previousHeight <= 0
-    ) {
-      return
-    }
-
-    const copyWidth = Math.min(previousWidth, this.targetCanvas.width)
-    const copyHeight = Math.min(previousHeight, this.targetCanvas.height)
-    const encoder = this.device.createCommandEncoder()
-
-    clearRenderTarget(encoder, this.lastFrameTexture)
-
-    const currentTexture = this.context.getCurrentTexture()
-    clearRenderTarget(encoder, currentTexture)
-
-    const region = {
-      sourceX: 0,
-      sourceY: 0,
-      destinationX: 0,
-      destinationY: 0,
-      width: copyWidth,
-      height: copyHeight,
-    }
-
-    copyTextureRegion(encoder, previousFrame, this.lastFrameTexture, region)
-    copyTextureRegion(encoder, previousFrame, currentTexture, region)
-    this.device.queue.submit([encoder.finish()])
-  }
-
-  /** Writes uniforms for compositing one scene-attached HTML texture. */
-  private writeHtmlCompositeParams(entry: SceneHtmlEntry) {
-    if (!this.device || !this.htmlCompositeParamsBuffer || !entry.inverseTransform) {
-      return
-    }
-
-    const inverse = entry.inverseTransform
-    this.htmlCompositeParamsBuffer.write({
-      canvas: {
-        width: this.targetCanvas.width,
-        height: this.targetCanvas.height,
-        uScale: getTextureUvScale(entry.deviceWidth, entry.width, entry.textureWidth),
-        vScale: getTextureUvScale(entry.deviceHeight, entry.height, entry.textureHeight),
-      },
-      inverse0: {
-        a: inverse.a,
-        c: inverse.c,
-        e: inverse.e,
-        copiedWidth: getCopiedCssSize(entry.copiedDeviceWidth, entry.deviceWidth, entry.width),
-      },
-      inverse1: {
-        b: inverse.b,
-        d: inverse.d,
-        f: inverse.f,
-        copiedHeight: getCopiedCssSize(entry.copiedDeviceHeight, entry.deviceHeight, entry.height),
-      },
-    })
-  }
-
-  /** Composites a scene-attached HTML layer over the current scene texture. */
-  private compositeHtmlLayer(
-    encoder: GPUCommandEncoder,
-    sharpSource: GPUTexture,
-    target: GPUTexture,
-    entry: SceneHtmlEntry,
-  ) {
-    if (
+      !this.core ||
       !this.device ||
-      !this.sampler ||
-      !this.htmlCompositePipeline ||
-      !this.htmlCompositeParamsBuffer ||
-      !entry.texture ||
-      !entry.inverseTransform
+      !this.lastFrameTexture ||
+      this.targetCanvas.width <= 0 ||
+      this.targetCanvas.height <= 0
     ) {
       return
     }
 
-    this.writeHtmlCompositeParams(entry)
-
-    const bindGroup = createPipelineBindGroup(this.device, this.htmlCompositePipeline, [
-      { binding: 0, resource: this.sampler },
-      { binding: 1, resource: sharpSource.createView() },
-      { binding: 2, resource: entry.texture.createView() },
-      { binding: 3, resource: this.htmlCompositeParamsBuffer.bindingResource },
-    ])
-    drawFullscreenPass(encoder, {
-      pipeline: this.htmlCompositePipeline,
-      bindGroup,
-      target,
+    this.core.render({
+      layers,
+      width: this.targetCanvas.width,
+      height: this.targetCanvas.height,
+      dpr: this.currentDpr,
+      outputTexture: this.lastFrameTexture,
+      contentSource: this.domContent,
     })
-  }
 
-  /** Copies the completed scene texture into the canvas presentation texture. */
-  private copyTextureToPresentation(encoder: GPUCommandEncoder, source: GPUTexture) {
-    if (!this.context) {
-      return
-    }
-
-    copyTextureRegion(encoder, source, this.context.getCurrentTexture(), {
+    const encoder = this.device.createCommandEncoder()
+    copyTextureRegion(encoder, this.lastFrameTexture, this.context.getCurrentTexture(), {
       sourceX: 0,
       sourceY: 0,
       destinationX: 0,
@@ -1023,97 +353,6 @@ export class Renderer {
       width: this.targetCanvas.width,
       height: this.targetCanvas.height,
     })
-  }
-
-  /** Draws a complete frame for the provided sorted scene layers. */
-  private drawFrame(layers = getSortedSceneLayers(this.scene)) {
-    if (
-      this.destroyed ||
-      !this.device ||
-      !this.context ||
-      !this.sampler ||
-      !this.targets ||
-      !this.glassPipeline ||
-      !this.displacementFieldPipeline ||
-      !this.backdropBlurResources ||
-      !this.displacementBlurResources ||
-      !this.shadowBlurResources ||
-      !this.shadowMaskPipeline ||
-      !this.shadowCompositePipeline ||
-      !this.htmlCompositePipeline
-    ) {
-      return
-    }
-
-    const seenContainers = new Set<Container>()
-    const composer = new PingPongComposer(this.device, this.targets)
-
-    for (const entry of layers) {
-      if (entry.child instanceof Html) {
-        const htmlEntry = this.domContent.getSceneHtmlEntry(entry.child)
-        if (!htmlEntry || !htmlEntry.texture || !htmlEntry.inverseTransform) {
-          continue
-        }
-
-        this.compositeHtmlLayer(composer.encoder, composer.current, composer.next, htmlEntry)
-        composer.submitAndSwap()
-        continue
-      }
-
-      const packedShapes = this.packShapes(entry.child, entry.transform)
-      this.writeGlobals(entry.child, packedShapes.shapeCount)
-      const blurredBackdrop = renderAdaptiveBlur({
-        device: this.device,
-        sampler: this.sampler,
-        encoder: composer.encoder,
-        source: composer.current,
-        radiusPx: entry.child.blur * this.currentDpr,
-        chain: this.targets.backdropBlur,
-        resources: this.backdropBlurResources,
-      })
-      const displacementField = this.renderDisplacementField(composer.encoder, entry.child)
-      if (!displacementField) {
-        continue
-      }
-
-      const metricsState = this.backdropMetrics.getTrackedState(entry.child)
-      let scheduledMetricsReadback = false
-
-      if (metricsState) {
-        seenContainers.add(entry.child)
-        scheduledMetricsReadback = this.renderBackdropMetrics(
-          composer.encoder,
-          metricsState,
-          packedShapes.bounds,
-          blurredBackdrop,
-        )
-      }
-
-      if (this.renderShadow(composer.encoder, composer.current, composer.next, entry.child)) {
-        composer.submitAndSwap()
-      }
-
-      this.renderContainer(composer.encoder, composer.current, blurredBackdrop, displacementField, composer.next)
-      composer.submitAndSwap()
-
-      if (metricsState && scheduledMetricsReadback) {
-        this.backdropMetrics.scheduleReadback(metricsState)
-      }
-    }
-
-    this.backdropMetrics.markSceneMembership(seenContainers)
-
-    this.copyTextureToPresentation(composer.encoder, composer.current)
-    if (this.lastFrameTexture) {
-      copyTextureRegion(composer.encoder, composer.current, this.lastFrameTexture, {
-        sourceX: 0,
-        sourceY: 0,
-        destinationX: 0,
-        destinationY: 0,
-        width: this.targetCanvas.width,
-        height: this.targetCanvas.height,
-      })
-    }
-    composer.submit()
+    this.device.queue.submit([encoder.finish()])
   }
 }
