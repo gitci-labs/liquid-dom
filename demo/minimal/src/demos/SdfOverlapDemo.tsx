@@ -23,6 +23,8 @@ const INITIAL_VERTICAL_OFFSET = 0
 const INITIAL_SHAPE_SCALE_X = 1
 const INITIAL_SHAPE_SCALE_Y = 1
 const INITIAL_CONTAINER_SPACING = 12
+const INITIAL_NORMAL_DIVERGENCE_BLEND_ENABLED = true
+const INITIAL_NORMAL_DIVERGENCE_BLEND_POWER = 0.5
 const INITIAL_BLUR = 7
 const INITIAL_BEZEL_WIDTH = 18
 const INITIAL_DISPLACEMENT_BLUR = 8
@@ -47,6 +49,8 @@ export default function SdfOverlapDemo() {
     shapeScaleX,
     shapeScaleY,
     containerSpacing,
+    normalDivergenceBlendEnabled,
+    normalDivergenceBlendPower,
     blur,
     bezelWidth,
     displacementBlur,
@@ -97,6 +101,17 @@ export default function SdfOverlapDemo() {
         max: 90,
         step: 1,
         label: 'Container spacing',
+      },
+      normalDivergenceBlendPower: {
+        value: INITIAL_NORMAL_DIVERGENCE_BLEND_POWER,
+        min: 0.1,
+        max: 12,
+        step: 0.1,
+        label: 'Normal gate power',
+      },
+      normalDivergenceBlendEnabled: {
+        value: INITIAL_NORMAL_DIVERGENCE_BLEND_ENABLED,
+        label: 'Normal gating',
       },
       cornerRadius: {
         value: INITIAL_CORNER_RADIUS,
@@ -286,6 +301,8 @@ export default function SdfOverlapDemo() {
             <GlassContainer
               blur={blur}
               spacing={containerSpacing}
+              normalDivergenceBlendEnabled={normalDivergenceBlendEnabled}
+              normalDivergenceBlendPower={normalDivergenceBlendPower}
               bezelWidth={bezelWidth}
               displacementBlur={displacementBlur}
               thickness={86}

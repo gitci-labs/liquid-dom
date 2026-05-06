@@ -149,21 +149,17 @@ struct VertexOutput {
   @location(0) uv: vec2f,
 };
 
-// Smooth union uses the classic polynomial smooth-min only after two gates.
-// The normal gate rejects duplicate, nested, and locally parallel boundaries:
-// coincident surfaces are exposure-ambiguous because each shape samples exactly
-// on the other's zero contour, so exposure alone would still leave a partial
-// blend and a smaller version of the overlap bulge. The exposure gate rejects
-// surfaces that are clearly buried inside the other side of the union, such as
-// a rounded corner hidden inside an overlapping rectangle. Lower
-// NORMAL_DIVERGENCE_BLEND_END values make blends appear sooner as normals
-// diverge. Higher EXPOSURE_BAND_SCALE values make the hidden-surface test more
-// forgiving, but can let overlap bulges return.
+// Smooth union uses the classic polynomial smooth-min only after a normal gate.
+// Nearly aligned normals are treated as duplicate or nested boundaries and fall
+// back toward a hard union; diverging normals get the full blend radius so real
+// corners can form a rounded transition.
+// globals.sdf.x shapes a continuous ramp from aligned normals to opposed
+// normals. A high power keeps smoothing very small until larger angle
+// differences, without introducing a hard threshold in the blend radius.
+// globals.sdf.y toggles that normal gate; when disabled, every pair receives
+// the full configured smoothing distance.
 const SDF_EPSILON: f32 = 0.0001;
 const SDF_GRADIENT_STEP_PX: f32 = 1.0;
-const NORMAL_DIVERGENCE_BLEND_END: f32 = 0.35;
-const EXPOSURE_BAND_SCALE: f32 = 0.35;
-const MIN_EXPOSURE_BAND_PX: f32 = 1.0;
 const DEBUG_DISPLACEMENT_ENCODE_SCALE: f32 = 0.01;
 // Smooth blending can flatten the fused SDF so one distance unit covers
 // more than one screen pixel. Specular is a screen-space rim effect, so it
@@ -196,21 +192,12 @@ fn hardUnion(left: SdfSample, right: SdfSample) -> SdfSample {
   return right;
 }
 
-fn surfaceExposure(distanceToOtherShape: f32, exposureBand: f32) -> f32 {
-  // A projected surface exactly on the other shape's boundary is still exposed.
-  // Only surfaces that are meaningfully inside the other side of the hard union
-  // should fade out; using 0 as the upper edge keeps coincident and concave
-  // overlap boundaries at full blend radius instead of collapsing the fillet.
-  return smoothstep(-exposureBand, 0.0, distanceToOtherShape);
-}
-
-fn smoothUnion(left: SdfSample, right: SdfSample, smoothing: f32, exposure: f32) -> SdfSample {
-  // Identical or nested shapes have nearly aligned normals; smoothing those cases
-  // would only expand the silhouette. Diverging normals indicate two exposed
-  // boundaries meeting, which is where a rounded transition is useful.
+fn smoothUnion(left: SdfSample, right: SdfSample, smoothing: f32) -> SdfSample {
   let normalAlignment = clamp(dot(left.gradient, right.gradient), -1.0, 1.0);
-  let normalDivergence = smoothstep(0.0, NORMAL_DIVERGENCE_BLEND_END, 1.0 - normalAlignment);
-  let blendDistance = smoothing * normalDivergence * clamp(exposure, 0.0, 1.0);
+  let normalDivergenceBlendPower = max(globals.sdf.x, 0.0001);
+  let gatedNormalDivergence = pow((1.0 - normalAlignment) * 0.5, normalDivergenceBlendPower);
+  let normalDivergence = select(1.0, gatedNormalDivergence, globals.sdf.y > 0.5);
+  let blendDistance = smoothing * normalDivergence;
 
   if (blendDistance <= SDF_EPSILON) {
     return hardUnion(left, right);
@@ -218,8 +205,6 @@ fn smoothUnion(left: SdfSample, right: SdfSample, smoothing: f32, exposure: f32)
 
   let h = clamp(0.5 + 0.5 * (right.distance - left.distance) / blendDistance, 0.0, 1.0);
   return SdfSample(
-    // Classic polynomial smooth-min. The blend distance has already been gated,
-    // so this remains conservative for hidden or duplicate-overlap cases.
     mix(right.distance, left.distance, h) - blendDistance * h * (1.0 - h),
     normalizeSdfGradient(mix(right.gradient, left.gradient, h)),
   );
@@ -270,18 +255,6 @@ fn shapeDistance(shape: ShapeData, pos: vec2f) -> f32 {
   return shapeDistanceFromLocal(shape, shapeLocalPos(shape, pos));
 }
 
-// Hard-union distance for shapes that have already been folded into result.
-// Used to test if the next shape's projected surface is buried inside them.
-fn sceneHardSdfPrefix(pos: vec2f, shapeCount: u32) -> f32 {
-  var distance = 1e5;
-
-  for (var i = 0u; i < shapeCount; i = i + 1u) {
-    distance = min(distance, shapeDistance(shapes[i], pos));
-  }
-
-  return distance;
-}
-
 fn shapeGradient(shape: ShapeData, pos: vec2f) -> vec2f {
   let eps = SDF_GRADIENT_STEP_PX;
   return normalizeSdfGradient(vec2f(
@@ -307,21 +280,7 @@ fn sceneSdfSample(pos: vec2f, shapeCount: u32, smoothing: f32) -> SdfSample {
       result = nextSample;
       found = true;
     } else {
-      // Project from the sample point back to each shape's nearest surface. If
-      // either projected surface is inside the other side of the union, it is a
-      // hidden internal boundary and should not create smoothing or a bulge.
-      let exposureBand = max(smoothing * EXPOSURE_BAND_SCALE, MIN_EXPOSURE_BAND_PX);
-      let resultSurfacePos = pos - result.distance * result.gradient;
-      let nextSurfacePos = pos - nextSample.distance * nextSample.gradient;
-      let resultSurfaceExposure = surfaceExposure(
-        shapeDistance(shapes[i], resultSurfacePos),
-        exposureBand,
-      );
-      let nextSurfaceExposure = surfaceExposure(
-        sceneHardSdfPrefix(nextSurfacePos, i),
-        exposureBand,
-      );
-      result = smoothUnion(result, nextSample, smoothing, resultSurfaceExposure * nextSurfaceExposure);
+      result = smoothUnion(result, nextSample, smoothing);
     }
   }
 

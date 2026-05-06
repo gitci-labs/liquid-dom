@@ -44,6 +44,8 @@ export type ContainerInit = Partial<Transform> & {
   thickness?: number
   displacementFactor?: number
   displacementBlur?: number
+  normalDivergenceBlendPower?: number
+  normalDivergenceBlendEnabled?: boolean
   ior?: number
   contentIor?: number
   contentDepth?: number
@@ -579,6 +581,13 @@ export class Container implements Transform {
   displacementFactor = 1
   /** Blur radius applied to the precomputed displacement field in CSS pixels. */
   displacementBlur = 4
+  /**
+   * Exponent shaping SDF smooth-union normal gating.
+   * Higher values suppress blending longer as boundary normals diverge.
+   */
+  normalDivergenceBlendPower = 0.5
+  /** Enables normal-based suppression of SDF smooth-union blending. */
+  normalDivergenceBlendEnabled = true
   /** Refractive index used for the displacement model. */
   ior = 1.5
   /** Refractive index used when refracting DOM content rendered inside the glass. */
@@ -651,6 +660,12 @@ export class Container implements Transform {
     }
     if (options.displacementBlur !== undefined) {
       this.displacementBlur = options.displacementBlur
+    }
+    if (options.normalDivergenceBlendPower !== undefined) {
+      this.normalDivergenceBlendPower = options.normalDivergenceBlendPower
+    }
+    if (options.normalDivergenceBlendEnabled !== undefined) {
+      this.normalDivergenceBlendEnabled = options.normalDivergenceBlendEnabled
     }
     if (options.ior !== undefined) {
       this.ior = options.ior

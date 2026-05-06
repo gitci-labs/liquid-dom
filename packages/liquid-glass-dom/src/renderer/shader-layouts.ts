@@ -9,6 +9,7 @@ export const BlurParamsLayout = structLayout({
 export const GlobalsLayout = structLayout({
   canvas: vec4('width', 'height'),
   shape: vec4('smoothing', 'bezelWidth', 'shapeCount', 'surfaceProfile'),
+  sdf: vec4('normalDivergenceBlendPower', 'normalDivergenceBlendEnabled'),
   glass: vec4('thickness', 'displacementFactor', 'ior', 'dispersion'),
   content: vec4('ior', 'depth'),
   lighting: vec4('x', 'y'),

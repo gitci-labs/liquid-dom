@@ -392,6 +392,10 @@ export class WebGpuGlassCore {
         shapeCount,
         surfaceProfile: getSurfaceProfileIndex(container.surfaceProfile),
       },
+      sdf: {
+        normalDivergenceBlendPower: container.normalDivergenceBlendPower,
+        normalDivergenceBlendEnabled: container.normalDivergenceBlendEnabled ? 1 : 0,
+      },
       glass: {
         thickness: container.thickness * dpr,
         displacementFactor: container.displacementFactor,

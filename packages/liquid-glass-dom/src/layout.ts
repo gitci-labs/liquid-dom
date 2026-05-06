@@ -980,6 +980,26 @@ export class GlassContainer extends SingleChildUiNode<LaymeoutNode, SceneContain
     }
   }
 
+  get normalDivergenceBlendPower(): number {
+    return this.sceneNode.normalDivergenceBlendPower
+  }
+
+  set normalDivergenceBlendPower(value: number) {
+    if (setProperty(this.sceneNode, 'normalDivergenceBlendPower', value)) {
+      this.invalidateFrame('normalDivergenceBlendPower')
+    }
+  }
+
+  get normalDivergenceBlendEnabled(): boolean {
+    return this.sceneNode.normalDivergenceBlendEnabled
+  }
+
+  set normalDivergenceBlendEnabled(value: boolean) {
+    if (setProperty(this.sceneNode, 'normalDivergenceBlendEnabled', value)) {
+      this.invalidateFrame('normalDivergenceBlendEnabled')
+    }
+  }
+
   get ior(): number {
     return this.sceneNode.ior
   }
