@@ -1,6 +1,6 @@
-# liquid-glass-web
+# Liquid DOM
 
-`liquid-glass-web` is a monorepo for WebGPU liquid-glass rendering, React bindings, Three.js integration, React Three Fiber integration, and the renderer-agnostic layout engine used by the higher-level APIs.
+Liquid DOM is a monorepo for WebGPU liquid-glass rendering, React bindings, Three.js integration, React Three Fiber integration, and the renderer-agnostic layout engine used by the higher-level APIs.
 
 The packages are split by integration layer. Use the lowest-level package that matches the renderer you own, or the higher-level React packages when you want retained declarative layout.
 
