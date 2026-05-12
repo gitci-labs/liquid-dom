@@ -55,7 +55,8 @@
   aspect-ratio: 1;
   margin-bottom: 9px;
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: 30px;
+  corner-shape: squircle;
   background: #2a2a2a;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.26);
 }

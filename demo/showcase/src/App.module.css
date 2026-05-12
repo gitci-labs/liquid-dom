@@ -59,7 +59,8 @@
   place-items: center;
   overflow: hidden;
   border: 1px solid #e5e5e5;
-  border-radius: 32px;
+  border-radius: 70px;
+  corner-shape: squircle;
   background: white;
   box-shadow: 0 22px 80px rgba(0, 0, 0, 0.07);
 }
