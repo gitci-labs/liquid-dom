@@ -2,6 +2,7 @@ import { type ComponentType, useState } from 'react'
 import { Leva } from 'leva'
 import SdfOverlapDemo from '../../minimal/src/demos/SdfOverlapDemo'
 import IosNotificationDemo from './demos/IosNotificationDemo'
+import VideoControlsDemo from './demos/VideoControlsDemo'
 import styles from './App.module.css'
 
 type Showcase = {
@@ -12,6 +13,7 @@ type Showcase = {
 
 const showcases: Showcase[] = [
   { id: 'ios-notification', label: 'Notification', Component: IosNotificationDemo },
+  { id: 'video-controls', label: 'Video Controls', Component: VideoControlsDemo },
   { id: 'sdf-overlap-b', label: 'Overlap B', Component: SdfOverlapDemo },
   { id: 'sdf-overlap-c', label: 'Overlap C', Component: SdfOverlapDemo },
 ]

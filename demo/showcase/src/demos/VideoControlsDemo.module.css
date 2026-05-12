@@ -1,0 +1,67 @@
+.root {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #050505;
+}
+
+.canvasShell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #050505;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.iconContent {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.96);
+  filter: none;
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
+  transition:
+    opacity 320ms ease,
+    filter 320ms ease;
+}
+
+.iconContent[data-visible='true'] {
+  opacity: 1;
+}
+
+.iconContent[data-blur='true'] {
+  filter: blur(8px);
+}
+
+.iconContent[data-visible='true'][data-blur='true'] {
+  filter: blur(0);
+}
+
+.playIcon {
+  width: 34px;
+  height: 34px;
+}
+
+.skipIcon {
+  transform: translateY(-1px);
+  width: 29px;
+  height: 29px;
+}
