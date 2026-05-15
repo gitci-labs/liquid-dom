@@ -321,6 +321,22 @@ describe('React layout components', () => {
     expect(manager.active).toBe(false)
   })
 
+  it('allows easing output to overshoot the target', () => {
+    const manager = new AnimationManager()
+    const target = { value: 0 }
+
+    manager.animate(target, { value: 100 }, easing({
+      duration: 0.1,
+      ease: () => 1.25,
+    }))
+    manager.tick(50)
+
+    expect(target.value).toBeCloseTo(125)
+
+    manager.tick(50)
+    expect(target.value).toBeCloseTo(100)
+  })
+
   it('provides linear cubic bezier easing for a linear curve', () => {
     const linearBezier = Easing.bezier(0, 0, 1, 1)
 

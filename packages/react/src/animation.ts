@@ -640,7 +640,7 @@ export class AnimationManager {
       } else {
         animation.elapsed += deltaSeconds
         const progress = clamp01(animation.elapsed / animation.config.duration)
-        const easedProgress = clamp01(animation.config.ease(progress))
+        const easedProgress = animation.config.ease(progress)
 
         for (const channel of getChannels(animation.value)) {
           stepEasingChannel(channel, easedProgress)
