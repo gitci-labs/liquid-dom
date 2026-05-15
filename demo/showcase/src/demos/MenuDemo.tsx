@@ -290,8 +290,8 @@ export default function MenuDemo() {
                                 scaleY={open ? 1 : CLOSED_MENU_CONTENT_SCALE}
                                 origin={{ x: MENU_WIDTH / 2, y: MENU_HEIGHT / 2 }}
                                 transition={{
-                                  scaleX: open ? CONTENT_BLUR_TRANSITION : false,
-                                  scaleY: open ? CONTENT_BLUR_TRANSITION : false,
+                                  scaleX: CONTENT_BLUR_TRANSITION,
+                                  scaleY: CONTENT_BLUR_TRANSITION,
                                 }}
                               >
                                 <Frame width={MENU_WIDTH} height={MENU_HEIGHT}>
