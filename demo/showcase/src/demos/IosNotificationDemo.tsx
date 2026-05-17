@@ -55,19 +55,31 @@ function getActionOpacity(actionX: number, notificationOffset: number) {
 }
 
 export default function IosNotificationDemo() {
+  const [nightMode, setNightMode] = useState(false)
+
   return (
     <section className={styles.root}>
       <LayoutCanvas
         className={styles.canvasShell}
         canvasClassName={styles.canvas}
       >
-        <NotificationScene />
+        <NotificationScene nightMode={nightMode} />
       </LayoutCanvas>
+
+      <button
+        aria-pressed={nightMode}
+        className={`${styles.nightModeToggle} ${nightMode ? styles.nightModeToggleActive : ''}`}
+        type="button"
+        onClick={() => setNightMode((enabled) => !enabled)}
+      >
+        <span className={styles.nightModeCheckbox} aria-hidden="true" />
+        Night mode
+      </button>
     </section>
   )
 }
 
-function NotificationScene() {
+function NotificationScene({ nightMode }: { nightMode: boolean }) {
   const renderer = useRenderer()
   const invalidateFrame = useInvalidateFrame()
   const animate = useAnimate()
@@ -214,11 +226,13 @@ function NotificationScene() {
   return (
     <ZStack alignment="center">
       <Html zIndex={-2} sizing="fill">
-        <img
-          alt=""
-          className={styles.backgroundImage}
-          src={abstractShapesUrl}
-        />
+        <div className={`${styles.backdrop} ${nightMode ? styles.backdropNight : ''}`}>
+          <img
+            alt=""
+            className={styles.backgroundImage}
+            src={abstractShapesUrl}
+          />
+        </div>
       </Html>
 
       <Frame maxWidth={Infinity} maxHeight={Infinity}>
@@ -226,7 +240,7 @@ function NotificationScene() {
           blur={12}
           spacing={8}
           bezelWidth={18}
-          tint={{ r: 0.82, g: 0.92, b: 0.95, a: 0.22 }}
+          tint={ nightMode ? { r: 0.7, g: 0.7, b: 0.7, a: 0.22 } : { r: 0.82, g: 0.92, b: 0.95, a: 0.22 }}
           shadowColor={{ r: 0, g: 0, b: 0, a: 0.2 }}
           shadowOffsetY={7}
           shadowBlur={21}
