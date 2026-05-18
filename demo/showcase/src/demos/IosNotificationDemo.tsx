@@ -30,9 +30,10 @@ const ACTION_GAP = 18
 const OPTIONS_X = NOTIFICATION_WIDTH / 2 - ACTION_WIDTH * 1.5 - ACTION_GAP
 const CLEAR_X = OPTIONS_X + ACTION_WIDTH + ACTION_GAP
 const OPEN_OFFSET = OPTIONS_X - ACTION_WIDTH / 2 - ACTION_GAP - NOTIFICATION_WIDTH / 2
-const NOTIFICATION_CORNER_RADIUS = 44
+const NOTIFICATION_CORNER_RADIUS = 48
 const ACTION_HOVER_SCALE = 1.035
 const ACTION_PRESS_SCALE = 0.96
+const ACTION_LABEL_FADE_OUT_FRACTION = 0.4
 const ACTION_SCALE_TRANSITION = spring({ stiffness: 520, damping: 42 })
 const NOTIFICATION_OFFSET_TRANSITION = spring({ stiffness: 520, damping: 44 })
 const NOTIFICATION_RUBBERBAND = 0.18
@@ -49,9 +50,10 @@ function clamp(value: number, min: number, max: number) {
 
 function getActionOpacity(actionX: number, notificationOffset: number) {
   const notificationRightEdge = notificationOffset + NOTIFICATION_WIDTH / 2
-  const actionRightEdge = actionX + ACTION_WIDTH / 2
+  const actionLeftEdge = actionX - ACTION_WIDTH / 2
+  const disappearedFraction = clamp((notificationRightEdge - actionLeftEdge) / ACTION_WIDTH, 0, 1)
 
-  return clamp((actionRightEdge - notificationRightEdge) / ACTION_WIDTH, 0, 1)
+  return clamp(1 - disappearedFraction / ACTION_LABEL_FADE_OUT_FRACTION, 0, 1)
 }
 
 export default function IosNotificationDemo() {
@@ -238,7 +240,7 @@ function NotificationScene({ nightMode }: { nightMode: boolean }) {
       <Frame maxWidth={Infinity} maxHeight={Infinity}>
         <GlassContainer
           blur={12}
-          spacing={8}
+          spacing={10}
           bezelWidth={18}
           tint={ nightMode ? { r: 0.7, g: 0.7, b: 0.7, a: 0.22 } : { r: 0.82, g: 0.92, b: 0.95, a: 0.22 }}
           shadowColor={{ r: 0, g: 0, b: 0, a: 0.2 }}
