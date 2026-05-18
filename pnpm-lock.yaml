@@ -114,9 +114,15 @@ importers:
       '@liquid-dom/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@liquid-dom/r3f':
+        specifier: workspace:*
+        version: link:../../packages/r3f
       '@liquid-dom/react':
         specifier: workspace:*
         version: link:../../packages/react
+      '@react-three/fiber':
+        specifier: ^9.6.1
+        version: 9.6.1(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(three@0.184.0)
       '@use-gesture/react':
         specifier: ^10.3.1
         version: 10.3.1(react@19.2.5)
@@ -132,6 +138,9 @@ importers:
       react-dom:
         specifier: ^19.2.4
         version: 19.2.5(react@19.2.5)
+      three:
+        specifier: ^0.184.0
+        version: 0.184.0
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.2.2
@@ -145,6 +154,9 @@ importers:
       '@types/react-dom':
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.14)
+      '@types/three':
+        specifier: ^0.184.0
+        version: 0.184.0
       '@vitejs/plugin-react':
         specifier: ^6.0.1
         version: 6.0.1(vite@8.0.10(@types/node@24.12.2)(esbuild@0.27.7)(jiti@2.6.1))

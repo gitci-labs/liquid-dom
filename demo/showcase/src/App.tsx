@@ -5,6 +5,7 @@ import IosNotificationDemo from './demos/IosNotificationDemo'
 import MenuDemo from './demos/MenuDemo'
 import MusicSidebarDemo from './demos/MusicSidebarDemo'
 import NotificationCenterDemo from './demos/NotificationCenterDemo'
+import R3FIntegrationDemo from './demos/R3FIntegrationDemo'
 import VideoControlsDemo from './demos/VideoControlsDemo'
 import styles from './App.module.css'
 
@@ -25,6 +26,7 @@ const showcases: Showcase[] = [
   { id: 'music-sidebar', label: 'Music Sidebar', Component: MusicSidebarDemo },
   { id: 'control-center', label: 'Control Center', Component: ControlCenterDemo },
   { id: 'menu', label: 'Menu', Component: MenuDemo },
+  { id: 'r3f-integration', label: 'R3F Integration', Component: R3FIntegrationDemo },
   {
     id: 'notification-center',
     label: 'Notification Center',
