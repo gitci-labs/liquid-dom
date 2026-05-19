@@ -6,7 +6,6 @@ import {
   GlassContainer,
   Html,
   LiquidCanvas,
-  Overlay,
   spring,
   Transform,
   useAnimate,

@@ -5,7 +5,6 @@ import {
   GlassContainer,
   Html,
   LiquidCanvas,
-  Overlay,
   Transform,
   ZStack,
 } from '@liquid-dom/react'

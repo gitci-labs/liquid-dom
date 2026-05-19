@@ -16,7 +16,6 @@ import {
   HStack,
   Html,
   LiquidCanvas,
-  Overlay,
   spring,
   useAnimate,
   ZStack,
