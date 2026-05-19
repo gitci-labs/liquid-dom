@@ -117,6 +117,21 @@ export default function App() {
             </div>
           </>
         )}
+        <footer className={styles.footer}>
+          <p>
+            Made with ❤️ by{' '}
+            <a href="https://x.com/AndrewPrifer" target="_blank" rel="noreferrer">
+              Andrew Prifer
+            </a>
+          </p>
+          <p>
+            Check out the source code and the Liquid DOM library on{' '}
+            <a href="https://github.com/AndrewPrifer/liquid-dom" target="_blank" rel="noreferrer">
+              GitHub
+            </a>
+            .
+          </p>
+        </footer>
       </main>
     </>
   )

@@ -1,7 +1,7 @@
 .root {
   display: grid;
   min-height: 100vh;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto 1fr auto;
   gap: 30px;
   padding: 50px 20px 40px;
   color: #171717;
@@ -120,10 +120,35 @@
   box-shadow: 0 22px 80px rgba(0, 0, 0, 0.07);
 }
 
+.footer {
+  display: grid;
+  gap: 6px;
+  justify-self: center;
+  max-width: min(100%, 520px);
+  color: #737373;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.footer p {
+  margin: 0;
+}
+
+.footer a {
+  color: #171717;
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+
+.footer a:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 850px) {
   .root {
     gap: 16px;
-    padding: 14px 0 0;
+    padding: 14px 0 24px;
   }
 
   .tabBar {
@@ -200,5 +225,9 @@
     width: min(100% - 28px, 460px);
     margin-top: 46px;
     padding: 26px;
+  }
+
+  .footer {
+    width: min(100% - 28px, 460px);
   }
 }
