@@ -6,7 +6,7 @@ import {
   GlassContainer,
   HStack,
   Html,
-  LayoutCanvas,
+  LiquidCanvas,
   Padding,
   Transform,
   VStack,
@@ -65,7 +65,7 @@ export default function SimpleLayoutSceneDemo() {
 
   return (
     <section className="simple-layout-demo">
-      <LayoutCanvas className="canvas-shell simple-layout-canvas-shell" canvasClassName="demo-canvas">
+      <LiquidCanvas className="canvas-shell simple-layout-canvas-shell" canvasClassName="demo-canvas">
         <ZStack alignment="center">
           <Html zIndex={-1} sizing="fill">
             <div className="simple-layout-backdrop">
@@ -100,7 +100,7 @@ export default function SimpleLayoutSceneDemo() {
             />
           </Transform>
         </ZStack>
-      </LayoutCanvas>
+      </LiquidCanvas>
 
     </section>
   )

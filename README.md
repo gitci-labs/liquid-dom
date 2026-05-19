@@ -9,7 +9,7 @@ The packages are split by integration layer. Use the lowest-level package that m
 | Package | Purpose | Use it when |
 | --- | --- | --- |
 | [`@liquid-dom/core`](./packages/core) | Imperative DOM-backed scene graph, WebGPU renderer, reusable glass core, and retained layout classes. | You want direct control over the scene graph or you are building an adapter for another renderer. |
-| [`@liquid-dom/react`](./packages/react) | React 19 bindings for the retained layout and glass APIs. | You want to describe glass UI in React and let `LayoutCanvas` own the canvas, or you need a headless retained scene for another renderer. |
+| [`@liquid-dom/react`](./packages/react) | React 19 bindings for the retained layout and glass APIs. | You want to describe glass UI in React and let `LiquidCanvas` own the canvas, or you need a headless retained scene for another renderer. |
 | [`@liquid-dom/three`](./packages/three) | Adapter for compositing liquid glass over Three's WebGPU renderer. | You already render a Three WebGPU scene and want liquid glass as a post-composited layer. |
 | [`@liquid-dom/r3f`](./packages/r3f) | React Three Fiber bridge built on `@liquid-dom/three` and `@liquid-dom/react`. | You use R3F with Three's WebGPU renderer and want React liquid-glass UI over the scene. |
 | [`@liquid-dom/layout`](./packages/layout) | Renderer-agnostic retained layout engine. | You need SwiftUI-style measurement and placement without any renderer dependency. |

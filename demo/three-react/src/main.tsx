@@ -26,10 +26,10 @@ import {
   Glass,
   GlassContainer,
   Html,
-  LayoutSceneRoot,
+  LiquidScene,
   Transform,
   ZStack,
-  type LayoutSceneRootRef,
+  type LiquidSceneRef,
 } from '@liquid-dom/react'
 import { ThreeGlassRenderer } from '@liquid-dom/three'
 
@@ -46,7 +46,7 @@ type ControlsState = {
 
 function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const sceneRootRef = useRef<LayoutSceneRootRef | null>(null)
+  const sceneRootRef = useRef<LiquidSceneRef | null>(null)
   const [error, setError] = useState('')
   const [controls, setControls] = useState<ControlsState>({
     blur: 18,
@@ -99,9 +99,9 @@ function App() {
           onChange={(tint) => setControls((current) => ({ ...current, tint }))}
         />
       </aside>
-      <LayoutSceneRoot ref={sceneRootRef}>
+      <LiquidScene ref={sceneRootRef}>
         <ReactGlassScene controls={controls} />
-      </LayoutSceneRoot>
+      </LiquidScene>
     </div>
   )
 }
@@ -201,7 +201,7 @@ function DemoGlass({
 
 function useThreeIntegration(
   canvasRef: React.RefObject<HTMLCanvasElement | null>,
-  sceneRootRef: React.RefObject<LayoutSceneRootRef | null>,
+  sceneRootRef: React.RefObject<LiquidSceneRef | null>,
   setError: (message: string) => void,
 ) {
   useEffect(() => {

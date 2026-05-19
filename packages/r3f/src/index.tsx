@@ -11,7 +11,7 @@ import {
 } from 'react'
 import { useFrame, useThree, type RootState } from '@react-three/fiber'
 import { WebGpuDomContentSource } from '@liquid-dom/core'
-import { LayoutSceneRoot, type LayoutSceneRootRef } from '@liquid-dom/react'
+import { LiquidScene, type LiquidSceneRef } from '@liquid-dom/react'
 import {
   ThreeGlassRenderer,
   requireThreeWebGpuRenderTargetRenderer,
@@ -41,8 +41,8 @@ export type LiquidGlassR3FRenderTargetOptions = Pick<
 >
 
 export type UseLiquidGlassR3FOptions = {
-  /** Ref exposed by LayoutSceneRoot. The hook renders this retained liquid-glass scene over the R3F scene. */
-  sceneRootRef: RefObject<LayoutSceneRootRef | null>
+  /** Ref exposed by LiquidScene. The hook renders this retained liquid-glass scene over the R3F scene. */
+  sceneRootRef: RefObject<LiquidSceneRef | null>
   /** Wait for sceneRootRef.current instead of throwing when the root is not mounted yet. */
   deferUntilSceneRoot?: boolean
   /** Positive R3F render priority. Positive priorities take over final rendering. */
@@ -61,7 +61,7 @@ export type UseLiquidGlassR3FOptions = {
 
 export type LiquidGlassR3FRootProps = {
   children?: ReactNode
-  sceneRootRef?: RefObject<LayoutSceneRootRef | null>
+  sceneRootRef?: RefObject<LiquidSceneRef | null>
 }
 
 export type LiquidGlassR3FSceneProps = {
@@ -72,17 +72,17 @@ export type LiquidGlassR3FRenderProps = Omit<
   UseLiquidGlassR3FOptions,
   'deferUntilSceneRoot' | 'sceneRootRef'
 > & {
-  sceneRootRef?: RefObject<LayoutSceneRootRef | null>
+  sceneRootRef?: RefObject<LiquidSceneRef | null>
 }
 
 export type LiquidGlassR3FProps = LiquidGlassR3FRenderProps
 
 type LiquidGlassR3FContextValue = {
   r3fInvalidate: (() => void) | null
-  sceneRoot: LayoutSceneRootRef | null
-  sceneRootRef: RefObject<LayoutSceneRootRef | null>
+  sceneRoot: LiquidSceneRef | null
+  sceneRootRef: RefObject<LiquidSceneRef | null>
   setR3FInvalidate: (invalidate: (() => void) | null) => void
-  setSceneRoot: (sceneRoot: LayoutSceneRootRef | null) => void
+  setSceneRoot: (sceneRoot: LiquidSceneRef | null) => void
 }
 
 type BridgeResources = {
@@ -160,7 +160,7 @@ function disposeResources(resources: BridgeResources | null) {
 }
 
 /**
- * Renders a LayoutSceneRoot over the current React Three Fiber scene using Three's WebGPU renderer.
+ * Renders a LiquidScene over the current React Three Fiber scene using Three's WebGPU renderer.
  *
  * Mount this hook inside an R3F <Canvas>. It uses a positive useFrame priority by default, so R3F's
  * automatic final render is disabled and this hook renders the Three scene into an intermediate
@@ -206,7 +206,7 @@ export function useLiquidGlassR3F({
       }
 
       reportError(
-        createIntegrationError('requires sceneRootRef.current. Render a LayoutSceneRoot with the same ref.'),
+        createIntegrationError('requires sceneRootRef.current. Render a LiquidScene with the same ref.'),
         onErrorRef.current,
       )
       return undefined
@@ -320,14 +320,14 @@ export function useLiquidGlassR3F({
 
 /** Provider shared by the R3F render bridge and the DOM-side liquid-glass scene root. */
 export function LiquidGlassR3FRoot({ children, sceneRootRef }: LiquidGlassR3FRootProps) {
-  const internalSceneRootRef = useRef<LayoutSceneRootRef | null>(null)
+  const internalSceneRootRef = useRef<LiquidSceneRef | null>(null)
   const resolvedSceneRootRef = sceneRootRef ?? internalSceneRootRef
   const [r3fInvalidate, setR3FInvalidateState] = useState<(() => void) | null>(null)
-  const [sceneRoot, setSceneRootState] = useState<LayoutSceneRootRef | null>(resolvedSceneRootRef.current)
+  const [sceneRoot, setSceneRootState] = useState<LiquidSceneRef | null>(resolvedSceneRootRef.current)
   const setR3FInvalidate = useCallback((invalidate: (() => void) | null) => {
     setR3FInvalidateState(() => invalidate)
   }, [])
-  const setSceneRoot = useCallback((sceneRoot: LayoutSceneRootRef | null) => {
+  const setSceneRoot = useCallback((sceneRoot: LiquidSceneRef | null) => {
     resolvedSceneRootRef.current = sceneRoot
     setSceneRootState(sceneRoot)
   }, [resolvedSceneRootRef])
@@ -351,13 +351,13 @@ export function LiquidGlassR3FScene({ children }: LiquidGlassR3FSceneProps) {
   const context = useRequiredLiquidGlassR3FContext('LiquidGlassR3F.Scene')
 
   return (
-    <LayoutSceneRoot
+    <LiquidScene
       ref={context.setSceneRoot}
       onInvalidateFrame={context.r3fInvalidate ?? undefined}
       onInvalidateLayout={context.r3fInvalidate ?? undefined}
     >
       {children}
-    </LayoutSceneRoot>
+    </LiquidScene>
   )
 }
 

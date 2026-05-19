@@ -76,22 +76,22 @@ export function App() {
 ```
 
 - `LiquidGlassR3F.Root` shares the retained scene ref and invalidation bridge.
-- `LiquidGlassR3F.Scene` creates a headless `LayoutSceneRoot` for liquid-glass React components.
+- `LiquidGlassR3F.Scene` creates a headless `LiquidScene` for liquid-glass React components.
 - `LiquidGlassR3F.Render` runs inside the R3F canvas and takes over final rendering with a positive frame priority.
 - `LiquidGlassR3F` is also callable as the render component, so `<LiquidGlassR3F />` is equivalent to `<LiquidGlassR3F.Render />`.
 
 ### Hook API
 
-Use `useLiquidGlassR3F` when you want to own the `LayoutSceneRoot` placement yourself.
+Use `useLiquidGlassR3F` when you want to own the `LiquidScene` placement yourself.
 
 ```tsx
 import { Canvas } from '@react-three/fiber'
 import { useRef, type RefObject } from 'react'
-import { LayoutSceneRoot, type LayoutSceneRootRef } from '@liquid-dom/react'
+import { LiquidScene, type LiquidSceneRef } from '@liquid-dom/react'
 import { useLiquidGlassR3F } from '@liquid-dom/r3f'
 
 function Bridge() {
-  const sceneRootRef = useRef<LayoutSceneRootRef | null>(null)
+  const sceneRootRef = useRef<LiquidSceneRef | null>(null)
 
   return (
     <>
@@ -99,9 +99,9 @@ function Bridge() {
         <RenderBridge sceneRootRef={sceneRootRef} />
       </Canvas>
 
-      <LayoutSceneRoot ref={sceneRootRef}>
+      <LiquidScene ref={sceneRootRef}>
         {/* @liquid-dom/react layout */}
-      </LayoutSceneRoot>
+      </LiquidScene>
     </>
   )
 }
@@ -109,7 +109,7 @@ function Bridge() {
 function RenderBridge({
   sceneRootRef,
 }: {
-  sceneRootRef: RefObject<LayoutSceneRootRef | null>
+  sceneRootRef: RefObject<LiquidSceneRef | null>
 }) {
   useLiquidGlassR3F({ sceneRootRef, renderPriority: 1 })
   return null
@@ -135,7 +135,7 @@ The hook also accepts `sceneRootRef` and `deferUntilSceneRoot`.
 - DOM-backed `Html` content from `@liquid-dom/react` requires the experimental HTML-in-Canvas API, currently available only behind Chrome's Canvas Draw Element flag: `chrome://flags/#canvas-draw-element`.
 - `renderPriority` must be positive so the bridge can take over final rendering.
 - The component API wires retained-scene invalidations into R3F invalidation, including demand-driven frame loops.
-- The hook API is lower-level. If you use it directly, make sure the supplied `LayoutSceneRoot` invalidates R3F when layout or frame state changes.
+- The hook API is lower-level. If you use it directly, make sure the supplied `LiquidScene` invalidates R3F when layout or frame state changes.
 - The bridge renders the R3F scene into an internal target before compositing liquid glass.
 - Reference: [WICG HTML-in-Canvas](https://wicg.github.io/html-in-canvas/).
 

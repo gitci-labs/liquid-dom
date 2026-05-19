@@ -15,7 +15,7 @@ import {
   type GlassContainerRef,
   HStack,
   Html,
-  LayoutCanvas,
+  LiquidCanvas,
   Overlay,
   spring,
   useAnimate,
@@ -51,7 +51,7 @@ export default function ControlCenterDemo() {
 
   return (
     <section className={styles.root} {...lightHandlers}>
-      <LayoutCanvas
+      <LiquidCanvas
         className={styles.canvasShell}
         canvasClassName={styles.canvas}
       >
@@ -97,7 +97,7 @@ export default function ControlCenterDemo() {
             </GlassContainer>
           </Frame>
         </ZStack>
-      </LayoutCanvas>
+      </LiquidCanvas>
     </section>
   )
 }

@@ -4,7 +4,7 @@ import {
   Glass,
   GlassContainer,
   Html,
-  LayoutCanvas,
+  LiquidCanvas,
   Overlay,
   Transform,
   ZStack,
@@ -93,7 +93,7 @@ const albums = [
 export default function MusicSidebarDemo() {
   return (
     <section className={styles.root}>
-      <LayoutCanvas
+      <LiquidCanvas
         className={styles.canvasShell}
         canvasClassName={styles.canvas}
       >
@@ -134,7 +134,7 @@ export default function MusicSidebarDemo() {
             </GlassContainer>
           </Frame>
         </ZStack>
-      </LayoutCanvas>
+      </LiquidCanvas>
     </section>
   )
 }

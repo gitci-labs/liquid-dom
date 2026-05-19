@@ -18,8 +18,8 @@ import type {
   FrameCallback,
   FrameLoopEntry,
   FrameState,
-  LayoutCanvasProps,
-  LayoutSceneRootProps,
+  LiquidCanvasProps,
+  LiquidSceneProps,
 } from './types'
 import {
   RootContext,
@@ -35,7 +35,7 @@ function createRequiredRendererGetter(rendererRef: MutableRefObject<Renderer | n
   return () => {
     const renderer = rendererRef.current
     if (!renderer) {
-      throw new Error('LayoutCanvas renderer is not available until the component is mounted.')
+      throw new Error('LiquidCanvas renderer is not available until the component is mounted.')
     }
     return renderer
   }
@@ -55,13 +55,13 @@ function applyStyle(element: HTMLElement, style: CSSProperties | undefined) {
   Object.assign(element.style, style)
 }
 
-/** Headless React root that builds a retained layout scene without owning a renderer. */
-export function LayoutSceneRoot({
+/** Headless React root that builds a retained liquid scene without owning a renderer. */
+export function LiquidScene({
   ref,
   children,
   onInvalidateFrame,
   onInvalidateLayout,
-}: LayoutSceneRootProps) {
+}: LiquidSceneProps) {
   const layoutScene = useStableNode(() => new LayoutScene())
   const animationManager = useStableNode(() => new AnimationManager())
   const layoutDirtyRef = useRef(true)
@@ -133,8 +133,8 @@ export function LayoutSceneRoot({
   )
 }
 
-/** Root component that owns a layout scene, renderer, canvas, and frame loop. */
-export function LayoutCanvas({
+/** Root component that owns a retained liquid scene, renderer, canvas, and frame loop. */
+export function LiquidCanvas({
   ref,
   children,
   className,
@@ -145,7 +145,7 @@ export function LayoutCanvas({
   proposal,
   frameloop = 'always',
   onError,
-}: LayoutCanvasProps) {
+}: LiquidCanvasProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const rendererRef = useRef<Renderer | null>(null)
   const layoutScene = useStableNode(() => new LayoutScene())
@@ -371,7 +371,7 @@ export function LayoutCanvas({
   )
 }
 
-/** Registers a callback in the nearest {@link LayoutCanvas} frame loop. */
+/** Registers a callback in the nearest {@link LiquidCanvas} frame loop. */
 export function useFrame(callback: FrameCallback, priority = 0) {
   const root = useRequiredRoot()
   const callbackRef = useRef(callback)
@@ -380,8 +380,8 @@ export function useFrame(callback: FrameCallback, priority = 0) {
   useEffect(() => root.registerFrame(callbackRef, priority), [root, priority])
 }
 
-/** Returns the nearest retained layout scene. */
-export function useLayoutScene() {
+/** Returns the nearest retained liquid scene. */
+export function useLiquidScene() {
   return useRequiredRoot().layoutScene
 }
 
@@ -389,7 +389,7 @@ export function useLayoutScene() {
 export function useRenderer() {
   const renderer = useRequiredRoot().getRenderer()
   if (!renderer) {
-    throw new Error('Renderer is not available until LayoutCanvas is mounted.')
+    throw new Error('Renderer is not available until LiquidCanvas is mounted.')
   }
   return renderer
 }

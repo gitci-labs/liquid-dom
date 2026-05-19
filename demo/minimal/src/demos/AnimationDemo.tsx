@@ -6,7 +6,7 @@ import {
   GlassContainer,
   HStack,
   Html,
-  LayoutCanvas,
+  LiquidCanvas,
   Padding,
   Transform,
   VStack,
@@ -66,7 +66,7 @@ export default function AnimationDemo() {
 
   return (
     <section className="animation-demo">
-      <LayoutCanvas className="canvas-shell animation-canvas-shell" canvasClassName="demo-canvas">
+      <LiquidCanvas className="canvas-shell animation-canvas-shell" canvasClassName="demo-canvas">
         <ZStack alignment="center">
           <Html zIndex={-1} sizing="fill">
             <div className="animation-backdrop">
@@ -90,7 +90,7 @@ export default function AnimationDemo() {
             sequence={sequence}
           />
         </ZStack>
-      </LayoutCanvas>
+      </LiquidCanvas>
 
     </section>
   )

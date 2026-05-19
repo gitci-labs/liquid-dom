@@ -13,7 +13,7 @@ import {
   Glass,
   GlassContainer,
   Html,
-  LayoutCanvas,
+  LiquidCanvas,
   Easing,
   easing,
   spring,
@@ -216,7 +216,7 @@ export default function MenuDemo() {
 
   return (
     <section className={styles.root} onPointerDown={handlePointerDown}>
-      <LayoutCanvas
+      <LiquidCanvas
         className={styles.canvasShell}
         canvasClassName={styles.canvas}
       >
@@ -367,7 +367,7 @@ export default function MenuDemo() {
             </Frame>
           </ZStack>
         </AnimationConfigProvider>
-      </LayoutCanvas>
+      </LiquidCanvas>
 
       <button
         aria-pressed={slowMo}

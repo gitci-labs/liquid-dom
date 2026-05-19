@@ -5,7 +5,7 @@ import {
   Glass,
   GlassContainer,
   Html,
-  LayoutCanvas,
+  LiquidCanvas,
   Transform,
   ZStack,
 } from '@liquid-dom/react'
@@ -279,7 +279,7 @@ export default function SdfOverlapDemo() {
 
   return (
     <section className="sdf-overlap-demo">
-      <LayoutCanvas className="canvas-shell sdf-overlap-canvas-shell" canvasClassName="demo-canvas">
+      <LiquidCanvas className="canvas-shell sdf-overlap-canvas-shell" canvasClassName="demo-canvas">
         <ZStack alignment="center">
           {showCheckerboard ? (
             <Html zIndex={-2} sizing="fill">
@@ -339,7 +339,7 @@ export default function SdfOverlapDemo() {
             </GlassContainer>
           </Frame>
         </ZStack>
-      </LayoutCanvas>
+      </LiquidCanvas>
       <input
         ref={backgroundImageInputRef}
         className="sdf-overlap-file-input"

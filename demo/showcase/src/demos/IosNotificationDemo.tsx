@@ -5,7 +5,7 @@ import {
   Glass,
   GlassContainer,
   Html,
-  LayoutCanvas,
+  LiquidCanvas,
   Overlay,
   spring,
   Transform,
@@ -60,12 +60,12 @@ export default function IosNotificationDemo() {
 
   return (
     <section className={styles.root}>
-      <LayoutCanvas
+      <LiquidCanvas
         className={styles.canvasShell}
         canvasClassName={styles.canvas}
       >
         <NotificationScene nightMode={nightMode} />
-      </LayoutCanvas>
+      </LiquidCanvas>
 
       <button
         aria-pressed={nightMode}

@@ -4,7 +4,7 @@
 
 `@liquid-dom/react` provides React 19 bindings for the retained liquid-glass layout API. It lets React describe a retained scene while the renderer mutates layout nodes directly between renders.
 
-Use `LayoutCanvas` when the React package should create and own the WebGPU canvas. Use `LayoutSceneRoot` when another renderer, such as a Three adapter, owns the output.
+Use `LiquidCanvas` when the React package should create and own the WebGPU canvas. Use `LiquidScene` when another renderer, such as a Three adapter, owns the output.
 
 ## Install
 
@@ -20,12 +20,12 @@ import {
   Glass,
   GlassContainer,
   Html,
-  LayoutCanvas,
+  LiquidCanvas,
 } from '@liquid-dom/react'
 
 export function App() {
   return (
-    <LayoutCanvas style={{ width: '100vw', height: '100vh' }}>
+    <LiquidCanvas style={{ width: '100vw', height: '100vh' }}>
       <GlassContainer blur={12} spacing={28}>
         <Frame width={280} height={160}>
           <Glass cornerRadius={44} pointerEvents>
@@ -35,7 +35,7 @@ export function App() {
           </Glass>
         </Frame>
       </GlassContainer>
-    </LayoutCanvas>
+    </LiquidCanvas>
   )
 }
 ```
@@ -44,7 +44,7 @@ export function App() {
 
 ### Roots
 
-`LayoutCanvas` owns a `LayoutScene`, a `Renderer`, a canvas, and a frame loop.
+`LiquidCanvas` owns a retained liquid scene, a `Renderer`, a canvas, and a frame loop.
 
 Common props:
 
@@ -55,7 +55,7 @@ Common props:
 - `frameloop`: `'always'` or `'demand'`.
 - `onError`: frame-loop error handler.
 
-`LayoutSceneRoot` is headless. It builds a retained `LayoutScene` without creating a renderer or canvas. Use its ref from another renderer and call `update(proposal, delta)` before rendering.
+`LiquidScene` is headless. It builds a retained liquid scene without creating a renderer or canvas. Use its ref from another renderer and call `update(proposal, delta)` before rendering.
 
 ### Layout Components
 
@@ -181,7 +181,7 @@ import {
   useFrame,
   useInvalidateFrame,
   useInvalidateLayout,
-  useLayoutScene,
+  useLiquidScene,
   useRenderer,
   useTimeline,
 } from '@liquid-dom/react'
@@ -232,15 +232,15 @@ When an active easing animation is retargeted, it starts a new easing transition
 
 `timeScale={2}` runs animations twice as fast, and `timeScale={0.5}` runs them at half speed. It applies to declarative `transition` props, `useAnimate()`, and `useTimeline()` calls under the provider. Active animations respond when `timeScale` changes. Invalid or nonpositive values are treated as `1`.
 
-`useAnimate()` starts direct retained-node animations and returns controls with `finished` and `stop()`. `useTimeline()` creates sequential animation timelines. `useFrame()` registers a callback in the nearest `LayoutCanvas` frame loop.
+`useAnimate()` starts direct retained-node animations and returns controls with `finished` and `stop()`. `useTimeline()` creates sequential animation timelines. `useFrame()` registers a callback in the nearest `LiquidCanvas` frame loop.
 
 ## Integration Notes
 
 - React 19 is required.
 - Rendering requires WebGPU through `@liquid-dom/core`.
 - DOM-backed `Html` content requires the experimental HTML-in-Canvas API, currently available only behind Chrome's Canvas Draw Element flag: `chrome://flags/#canvas-draw-element`.
-- `LayoutCanvas` is the only root that exposes `useRenderer()`. Calling `useRenderer()` under `LayoutSceneRoot` throws.
-- `LayoutSceneRoot` exposes `onInvalidateFrame` and `onInvalidateLayout` so external renderers can support demand-driven rendering.
+- `LiquidCanvas` is the only root that exposes `useRenderer()`. Calling `useRenderer()` under `LiquidScene` throws.
+- `LiquidScene` exposes `onInvalidateFrame` and `onInvalidateLayout` so external renderers can support demand-driven rendering.
 - React children inside `Html` are portaled into retained DOM hosts.
 - The retained scene mutates outside React render. Use refs and hooks for imperative animation and renderer interop.
 - Reference: [WICG HTML-in-Canvas](https://wicg.github.io/html-in-canvas/).

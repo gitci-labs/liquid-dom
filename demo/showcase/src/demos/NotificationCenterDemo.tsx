@@ -7,7 +7,7 @@ import {
   GlassContainer,
   HStack,
   Html,
-  LayoutCanvas,
+  LiquidCanvas,
   Padding,
   Spacer,
   spring,
@@ -125,12 +125,12 @@ function getPanelOpenTransitionProgress(panelY: number) {
 export default function NotificationCenterDemo() {
   return (
     <section className={styles.root}>
-      <LayoutCanvas
+      <LiquidCanvas
         className={styles.canvasShell}
         canvasClassName={styles.canvas}
       >
         <NotificationCenterScene />
-      </LayoutCanvas>
+      </LiquidCanvas>
     </section>
   )
 }

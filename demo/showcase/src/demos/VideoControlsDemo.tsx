@@ -4,7 +4,7 @@ import {
   Glass,
   GlassContainer,
   Html,
-  LayoutCanvas,
+  LiquidCanvas,
   spring,
   Transform,
   ZStack,
@@ -103,7 +103,7 @@ export default function VideoControlsDemo() {
       onPointerEnter={() => setVideoHover(true)}
       onPointerLeave={() => setVideoHover(false)}
     >
-      <LayoutCanvas
+      <LiquidCanvas
         className={styles.canvasShell}
         canvasClassName={styles.canvas}
       >
@@ -170,7 +170,7 @@ export default function VideoControlsDemo() {
             </GlassContainer>
           </Frame>
         </ZStack>
-      </LayoutCanvas>
+      </LiquidCanvas>
     </section>
   )
 }

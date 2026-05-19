@@ -6,12 +6,12 @@ import {
   GlassContainer,
   HStack,
   Html,
-  LayoutCanvas,
+  LiquidCanvas,
   Padding,
   VStack,
   ZStack,
   useFrame,
-  useLayoutScene,
+  useLiquidScene,
   type HtmlRef,
 } from '@liquid-dom/react'
 
@@ -63,7 +63,7 @@ export default function DomMeasurementDemo() {
 
   return (
     <section className="dom-measure-demo">
-      <LayoutCanvas className="canvas-shell dom-measure-canvas-shell" canvasClassName="demo-canvas">
+      <LiquidCanvas className="canvas-shell dom-measure-canvas-shell" canvasClassName="demo-canvas">
         <LayoutCallCounter onCount={setLayoutCount} />
         <MeasurementScene
           wrapWidth={wrapWidth}
@@ -73,7 +73,7 @@ export default function DomMeasurementDemo() {
           replacementVariant={replacementVariant}
           onMetrics={handleMetrics}
         />
-      </LayoutCanvas>
+      </LiquidCanvas>
 
       <aside className="panel dom-measure-readouts">
         <LayoutCountReadout count={layoutCount} />
@@ -84,7 +84,7 @@ export default function DomMeasurementDemo() {
 }
 
 function LayoutCallCounter({ onCount }: { onCount: (count: number) => void }) {
-  const layoutScene = useLayoutScene()
+  const layoutScene = useLiquidScene()
   const countRef = useRef(0)
   const onCountRef = useRef(onCount)
   onCountRef.current = onCount

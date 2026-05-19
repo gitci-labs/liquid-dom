@@ -481,7 +481,7 @@ function resolveTimeScale(timeScaleRef: AnimationTimeScaleRef | undefined) {
 }
 
 /**
- * Retained animation scheduler ticked by LayoutCanvas' RAF loop.
+ * Retained animation scheduler ticked by LiquidCanvas' RAF loop.
  */
 export class AnimationManager {
   private readonly animations = new Set<PropertyAnimation>()

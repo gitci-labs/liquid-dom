@@ -9,7 +9,7 @@ import {
   GlassContainer,
   HStack,
   Html,
-  LayoutCanvas,
+  LiquidCanvas,
   Overlay,
   VStack,
   ZStack,
@@ -25,7 +25,7 @@ import {
   type FrameRef,
   type HStackRef,
   type HtmlRef,
-  type LayoutCanvasRef,
+  type LiquidCanvasRef,
   type BackgroundRef,
   type GlassContainerRef,
   type OverlayRef,
@@ -351,7 +351,7 @@ describe('React layout components', () => {
     const frameRef = createRef<FrameRef>()
     const transition = { width: easing({ duration: 1, ease: Easing.linear }) }
     const renderFrame = (width: number, timeScale: number) => (
-      <LayoutCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
+      <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <AnimationConfigProvider timeScale={timeScale}>
           <Frame
             ref={frameRef}
@@ -362,7 +362,7 @@ describe('React layout components', () => {
             <Html sizing="fill" />
           </Frame>
         </AnimationConfigProvider>
-      </LayoutCanvas>
+      </LiquidCanvas>
     )
 
     const view = await renderReact(renderFrame(0, 1))
@@ -394,7 +394,7 @@ describe('React layout components', () => {
     }
 
     await renderReact(
-      <LayoutCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
+      <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <AnimationConfigProvider timeScale={2}>
           <ZStack>
             <AnimateTrigger />
@@ -403,7 +403,7 @@ describe('React layout components', () => {
             </Frame>
           </ZStack>
         </AnimationConfigProvider>
-      </LayoutCanvas>,
+      </LiquidCanvas>,
     )
 
     flushFrame(16)
@@ -413,14 +413,14 @@ describe('React layout components', () => {
   })
 
   it('exposes refs and mirrors children in React order', async () => {
-    const canvasRef = createRef<LayoutCanvasRef>()
+    const canvasRef = createRef<LiquidCanvasRef>()
     const containerRef = createRef<GlassContainerRef>()
     const rowRef = createRef<HStackRef>()
     const firstRef = createRef<GlassRef>()
     const secondRef = createRef<GlassRef>()
 
     await renderReact(
-      <LayoutCanvas ref={canvasRef} frameloop="demand" proposal={{ width: 320, height: 200 }}>
+      <LiquidCanvas ref={canvasRef} frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <GlassContainer ref={containerRef}>
           <HStack ref={rowRef} spacing={6}>
             <Glass ref={firstRef}>
@@ -431,7 +431,7 @@ describe('React layout components', () => {
             </Glass>
           </HStack>
         </GlassContainer>
-      </LayoutCanvas>,
+      </LiquidCanvas>,
     )
 
     expect(canvasRef.current?.layoutScene.root).toBe(containerRef.current)
@@ -446,7 +446,7 @@ describe('React layout components', () => {
 
     await renderReact(
       <StrictMode>
-        <LayoutCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
+        <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
           <GlassContainer>
             <HStack ref={rowRef}>
               <Glass ref={firstRef}>
@@ -457,7 +457,7 @@ describe('React layout components', () => {
               </Glass>
             </HStack>
           </GlassContainer>
-        </LayoutCanvas>
+        </LiquidCanvas>
       </StrictMode>,
     )
 
@@ -467,7 +467,7 @@ describe('React layout components', () => {
   it('updates layout node props from React props', async () => {
     const columnRef = createRef<VStackRef>()
     const renderColumn = (spacing: number) => (
-      <LayoutCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
+      <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <GlassContainer>
           <VStack ref={columnRef} spacing={spacing}>
             <Glass>
@@ -475,7 +475,7 @@ describe('React layout components', () => {
             </Glass>
           </VStack>
         </GlassContainer>
-      </LayoutCanvas>
+      </LiquidCanvas>
     )
 
     const view = await renderReact(renderColumn(8))
@@ -488,7 +488,7 @@ describe('React layout components', () => {
   it('animates declarative prop changes on the shared frame loop', async () => {
     const frameRef = createRef<FrameRef>()
     const renderFrame = (width: number) => (
-      <LayoutCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
+      <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <ZStack>
           <Frame
             ref={frameRef}
@@ -499,7 +499,7 @@ describe('React layout components', () => {
             <Html sizing="fill" />
           </Frame>
         </ZStack>
-      </LayoutCanvas>
+      </LiquidCanvas>
     )
 
     const view = await renderReact(renderFrame(100))
@@ -543,7 +543,7 @@ describe('React layout components', () => {
     }
 
     await renderReact(
-      <LayoutCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
+      <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <VStack>
           <TimelineTrigger />
           <Frame ref={firstRef} width={80} height={20}>
@@ -553,7 +553,7 @@ describe('React layout components', () => {
             <Html sizing="fill" />
           </Frame>
         </VStack>
-      </LayoutCanvas>,
+      </LiquidCanvas>,
     )
 
     expect(firstRef.current?.width).toBe(80)
@@ -588,14 +588,14 @@ describe('React layout components', () => {
     }
 
     await renderReact(
-      <LayoutCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
+      <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <ZStack>
           <AnimateTrigger />
           <Frame ref={frameRef} width={90} height={20}>
             <Html sizing="fill" />
           </Frame>
         </ZStack>
-      </LayoutCanvas>,
+      </LiquidCanvas>,
     )
 
     expect(frameRef.current?.width).toBe(90)
@@ -607,13 +607,13 @@ describe('React layout components', () => {
     const htmlRef = createRef<HtmlRef>()
 
     await renderReact(
-      <LayoutCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
+      <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <ZStack>
           <FixedHtml htmlRef={htmlRef} width={40} height={20}>
             <span data-testid="inside-html">Hello</span>
           </FixedHtml>
         </ZStack>
-      </LayoutCanvas>,
+      </LiquidCanvas>,
     )
 
     expect(htmlRef.current?.element).not.toBeNull()
@@ -629,25 +629,25 @@ describe('React layout components', () => {
     const htmlRef = createRef<HtmlRef>()
 
     const view = await renderReact(
-      <LayoutCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
+      <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <ZStack>
           <Frame width={40} height={20}>
             <Html ref={htmlRef} blur={12} sizing="fill" />
           </Frame>
         </ZStack>
-      </LayoutCanvas>,
+      </LiquidCanvas>,
     )
 
     expect(htmlRef.current?.blur).toBe(12)
 
     await view.rerender(
-      <LayoutCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
+      <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <ZStack>
           <Frame width={40} height={20}>
             <Html ref={htmlRef} blur={3} sizing="fill" />
           </Frame>
         </ZStack>
-      </LayoutCanvas>,
+      </LiquidCanvas>,
     )
 
     expect(htmlRef.current?.blur).toBe(3)
@@ -657,11 +657,11 @@ describe('React layout components', () => {
     const htmlRef = createRef<HtmlRef>()
 
     await renderReact(
-      <LayoutCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
+      <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <ZStack>
           <FixedHtml htmlRef={htmlRef} width={40} height={20} />
         </ZStack>
-      </LayoutCanvas>,
+      </LiquidCanvas>,
     )
     flushFrame()
 
@@ -692,7 +692,7 @@ describe('React layout components', () => {
     const glassRef = createRef<GlassRef>()
 
     await renderReact(
-      <LayoutCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
+      <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <GlassContainer>
           <Glass ref={glassRef}>
             <VStack>
@@ -723,7 +723,7 @@ describe('React layout components', () => {
             </VStack>
           </Glass>
         </GlassContainer>
-      </LayoutCanvas>,
+      </LiquidCanvas>,
     )
 
     expect(overlayRef.current?.layoutNode.children).toEqual([
@@ -747,13 +747,13 @@ describe('React layout components', () => {
     const onClick = vi.fn()
 
     await renderReact(
-      <LayoutCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
+      <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <GlassContainer>
           <Glass ref={glassRef} onClick={onClick}>
             <FixedHtml width={10} height={10} />
           </Glass>
         </GlassContainer>
-      </LayoutCanvas>,
+      </LiquidCanvas>,
     )
 
     expect(glassRef.current?.pointerEvents).toBe(true)
@@ -767,7 +767,7 @@ describe('React layout components', () => {
     const glassRef = createRef<GlassRef>()
 
     const view = await renderReact(
-      <LayoutCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
+      <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <GlassContainer>
           <Glass
             ref={glassRef}
@@ -777,14 +777,14 @@ describe('React layout components', () => {
             <FixedHtml width={10} height={10} />
           </Glass>
         </GlassContainer>
-      </LayoutCanvas>,
+      </LiquidCanvas>,
     )
 
     expect(glassRef.current?.cornerRadius).toBe(10)
     expect(glassRef.current?.cornerSmoothing).toBe(0.25)
 
     await view.rerender(
-      <LayoutCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
+      <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <GlassContainer>
           <Glass
             ref={glassRef}
@@ -794,7 +794,7 @@ describe('React layout components', () => {
             <FixedHtml width={10} height={10} />
           </Glass>
         </GlassContainer>
-      </LayoutCanvas>,
+      </LiquidCanvas>,
     )
 
     expect(glassRef.current?.cornerRadius).toBe(12)
@@ -807,13 +807,13 @@ describe('React layout components', () => {
     const onPress = vi.fn()
 
     await renderReact(
-      <LayoutCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
+      <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <GlassContainer>
           <Glass ref={glassRef} onHover={onHover} onPress={onPress}>
             <FixedHtml width={10} height={10} />
           </Glass>
         </GlassContainer>
-      </LayoutCanvas>,
+      </LiquidCanvas>,
     )
 
     expect(glassRef.current?.pointerEvents).toBe(true)
@@ -842,7 +842,7 @@ describe('React layout components', () => {
     const glassRef = createRef<GlassRef>()
 
     await renderReact(
-      <LayoutCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
+      <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <GlassContainer>
           <Glass
             ref={glassRef}
@@ -855,7 +855,7 @@ describe('React layout components', () => {
             <FixedHtml width={10} height={10} />
           </Glass>
         </GlassContainer>
-      </LayoutCanvas>,
+      </LiquidCanvas>,
     )
     flushFrame()
 
@@ -890,7 +890,7 @@ describe('React layout components', () => {
 
   it('runs useFrame callbacks in priority order and cleans them up', async () => {
     const calls: string[] = []
-    const canvasRef = createRef<LayoutCanvasRef>()
+    const canvasRef = createRef<LiquidCanvasRef>()
 
     function Probe({ enabled }: { enabled: boolean }) {
       if (!enabled) {
@@ -907,12 +907,12 @@ describe('React layout components', () => {
     }
 
     const renderProbe = (enabled: boolean) => (
-      <LayoutCanvas ref={canvasRef} frameloop="demand" proposal={{ width: 320, height: 200 }}>
+      <LiquidCanvas ref={canvasRef} frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <ZStack>
           <Probe enabled={enabled} />
           <FixedHtml width={10} height={10} />
         </ZStack>
-      </LayoutCanvas>
+      </LiquidCanvas>
     )
 
     const view = await renderReact(renderProbe(true))

@@ -75,12 +75,12 @@ export type FrameState = {
   invalidateFrame: () => void
 }
 
-/** Callback registered into a {@link LayoutCanvas} frame loop. */
+/** Callback registered into a {@link LiquidCanvas} frame loop. */
 export type FrameCallback = (state: FrameState) => void
-/** Render-loop mode used by {@link LayoutCanvas}. */
+/** Render-loop mode used by {@link LiquidCanvas}. */
 export type FrameLoopMode = 'always' | 'demand'
-/** Imperative handle exposed by {@link LayoutCanvas}. */
-export type LayoutCanvasRef = {
+/** Imperative handle exposed by {@link LiquidCanvas}. */
+export type LiquidCanvasRef = {
   readonly layoutScene: LayoutScene
   readonly scene: LayoutScene['scene']
   readonly renderer: Renderer
@@ -89,8 +89,8 @@ export type LayoutCanvasRef = {
   invalidateFrame: () => void
 }
 
-/** Imperative handle exposed by {@link LayoutSceneRoot}. */
-export type LayoutSceneRootRef = {
+/** Imperative handle exposed by {@link LiquidScene}. */
+export type LiquidSceneRef = {
   readonly layoutScene: LayoutScene
   readonly scene: LayoutScene['scene']
   update: (proposal: ProposedSize, delta?: number) => void
@@ -123,7 +123,7 @@ export type TransitionProp<T extends object = Record<string, unknown>> = {
   transition?: ComponentTransition<T>
 }
 
-export type LayoutCanvasProps = ChildrenProp & RefProp<LayoutCanvasRef> & {
+export type LiquidCanvasProps = ChildrenProp & RefProp<LiquidCanvasRef> & {
   className?: string
   style?: CSSProperties
   canvasClassName?: string
@@ -134,7 +134,7 @@ export type LayoutCanvasProps = ChildrenProp & RefProp<LayoutCanvasRef> & {
   onError?: (error: unknown) => void
 }
 
-export type LayoutSceneRootProps = ChildrenProp & RefProp<LayoutSceneRootRef> & {
+export type LiquidSceneProps = ChildrenProp & RefProp<LiquidSceneRef> & {
   /** Called when the retained scene needs a new frame without a layout pass. */
   onInvalidateFrame?: () => void
   /** Called when the retained scene needs layout before the next frame. */
