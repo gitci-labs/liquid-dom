@@ -97,6 +97,7 @@
   background: rgba(23, 23, 23, 0.08);
   font: inherit;
   font-size: 0.875rem;
+  user-select: all;
 }
 
 .stage {
