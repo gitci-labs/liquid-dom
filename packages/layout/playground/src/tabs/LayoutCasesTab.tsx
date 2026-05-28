@@ -1,14 +1,14 @@
 import { useMemo } from 'react'
 import {
-  background,
-  createLayoutEngine,
-  frame,
-  hstack,
-  overlay,
-  padding,
-  spacer,
-  vstack,
-  zstack,
+  Background,
+  LayoutEngine,
+  Frame,
+  HStack,
+  Overlay,
+  Padding,
+  Spacer,
+  VStack,
+  ZStack,
 } from '@liquid-dom/layout'
 import type { LayoutDebugStats, LayoutNode, ProposedSize, Size } from '@liquid-dom/layout'
 import {
@@ -48,7 +48,7 @@ export function LayoutCasesTab() {
 }
 
 function layoutCase(item: LayoutCase): { stats: LayoutDebugStats; size: Size } {
-  const engine = createLayoutEngine({ root: item.root })
+  const engine = new LayoutEngine({ root: item.root })
   const stats = engine.layout(item.proposal)
   engine.dispose()
   const rect = item.root.layout?.rect
@@ -64,7 +64,7 @@ function createCases(): LayoutCase[] {
     const save = visualLeaf('save', { width: 68, height: 34 }, 'Save', 'red')
     cases.push({
       title: 'HStack + Spacer',
-      root: hstack({ spacing: 8, alignment: 'center' }, tool.node, mode.node, spacer(), save.node),
+      root: new HStack({ spacing: 8, alignment: 'center' }).append(tool.node, mode.node, new Spacer(), save.node),
       boxes: [tool, mode, save],
       proposal: { width: 420, height: 90 },
     })
@@ -76,7 +76,7 @@ function createCases(): LayoutCase[] {
     const mid = visualLeaf('mid', { width: 128, height: 28 }, 'Middle', 'blue')
     cases.push({
       title: 'VStack Alignment',
-      root: vstack({ spacing: 8, alignment: 'trailing' }, short.node, wide.node, mid.node),
+      root: new VStack({ spacing: 8, alignment: 'trailing' }).append(short.node, wide.node, mid.node),
       boxes: [short, wide, mid],
       proposal: { width: 220, height: 140 },
     })
@@ -87,7 +87,7 @@ function createCases(): LayoutCase[] {
     const badge = visualLeaf('badge', { width: 96, height: 38 }, 'Badge', 'red')
     cases.push({
       title: 'ZStack',
-      root: zstack({ alignment: 'bottomTrailing' }, panel.node, badge.node),
+      root: new ZStack({ alignment: 'bottomTrailing' }).append(panel.node, badge.node),
       boxes: [panel, badge],
       proposal: { width: 280, height: 150 },
     })
@@ -97,11 +97,11 @@ function createCases(): LayoutCase[] {
     const content = visualLeaf('content', { width: 118, height: 38 }, 'Padded', 'teal')
     cases.push({
       title: 'Frame + Padding',
-      root: frame(padding(content.node, 14), {
+      root: new Frame({
         width: 230,
         height: 96,
         alignment: 'bottomTrailing',
-      }),
+      }).append(new Padding(14).append(content.node)),
       boxes: [content],
       proposal: { width: 240, height: 110 },
     })
@@ -112,7 +112,7 @@ function createCases(): LayoutCase[] {
     const bg = visualLeaf('bg', { width: 260, height: 92 }, 'Background', 'yellow')
     cases.push({
       title: 'Background',
-      root: background(padding(label.node, 10), bg.node),
+      root: new Background().append(new Padding(10).append(label.node), bg.node),
       boxes: [label, bg],
       proposal: { width: 280, height: 120 },
     })
@@ -123,7 +123,7 @@ function createCases(): LayoutCase[] {
     const ring = visualLeaf('ring', { width: 246, height: 122 }, 'Overlay can overflow', 'red')
     cases.push({
       title: 'Overlay',
-      root: overlay(card.node, ring.node),
+      root: new Overlay().append(card.node, ring.node),
       boxes: [card, ring],
       proposal: { width: 280, height: 140 },
     })
@@ -135,7 +135,7 @@ function createCases(): LayoutCase[] {
     const charlie = visualLeaf('charlie', { width: 174, height: 26 }, 'row: charlie', 'red')
     cases.push({
       title: 'Dynamic Children',
-      root: vstack({ spacing: 6, alignment: 'leading' }, [alpha.node, bravo.node, charlie.node]),
+      root: new VStack({ spacing: 6, alignment: 'leading' }).append([alpha.node, bravo.node, charlie.node]),
       boxes: [alpha, bravo, charlie],
       proposal: { width: 240, height: 120 },
     })

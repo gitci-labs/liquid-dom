@@ -57,17 +57,18 @@ export type ChildInput =
   | false
   | undefined
 
-export type LayoutNode = {
+export interface LayoutNode {
   readonly __liquidDomLayout: true
   readonly id: string
   readonly kind: string
   readonly parent: LayoutNode | null
   readonly children: readonly LayoutNode[]
   readonly layout: NodeLayout | undefined
-  append: (...children: LayoutNode[]) => void
-  prepend: (...children: LayoutNode[]) => void
-  insertBefore: (child: LayoutNode, before: LayoutNode) => void
-  replaceChildren: (...children: LayoutNode[]) => void
+  isLayoutActive: () => boolean
+  append: (...children: ChildInput[]) => this
+  prepend: (...children: ChildInput[]) => this
+  insertBefore: (child: ChildInput, before: LayoutNode) => this
+  replaceChildren: (...children: ChildInput[]) => this
   remove: () => void
   dispose: () => void
 }
@@ -107,22 +108,9 @@ export type SpacerNode = LayoutNode & {
   minLength: number
 }
 
-export type LeafMeasure = (proposal: ProposedSize, node: LeafNode) => Size
-
-export type LeafSubscribe = (
-  notify: (cause?: unknown) => void,
-  node: LeafNode,
-) => void | (() => void)
-
 export type LeafNode = LayoutNode & {
-  measure: LeafMeasure
-  subscribe: LeafSubscribe | undefined
   measureKey: unknown
   invalidateMeasure: (cause?: unknown) => void
-}
-
-export type CustomLayoutNode = LayoutNode & {
-  props: unknown
 }
 
 export type LayoutDebugStats = {
@@ -130,13 +118,15 @@ export type LayoutDebugStats = {
   cacheHits: number
   cacheMisses: number
   invalidations: number
-  activeSubscriptions: number
   nodes: number
 }
+
+export type LayoutInvalidationKind = 'measure' | 'placement' | 'structure'
 
 export type LayoutInvalidation = {
   id: string
   node: LayoutNode
+  kind: LayoutInvalidationKind
   cause?: unknown
 }
 
@@ -171,11 +161,4 @@ export type LayoutEngineOptions = {
    * measurement caching entirely.
    */
   maxCachedMeasurements?: number
-}
-
-export type LayoutEngine = {
-  root: LayoutNode | undefined
-  layout: (proposal: ProposedSize) => LayoutDebugStats
-  getDebugStats: () => LayoutDebugStats
-  dispose: () => void
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { createLayoutEngine } from '@liquid-dom/layout'
-import type { LayoutDebugStats, LayoutEngine } from '@liquid-dom/layout'
+import { LayoutEngine } from '@liquid-dom/layout'
+import type { LayoutDebugStats } from '@liquid-dom/layout'
 import {
   buildStressTree,
   defaultStressConfig,
@@ -51,7 +51,7 @@ export function StressTestTab() {
       currentState?.root.dispose()
       nextState = buildStressTree(config)
       stressStateRef.current = nextState
-      engineRef.current = createLayoutEngine({
+      engineRef.current = new LayoutEngine({
         root: nextState.root,
         maxCachedMeasurements: config.useCache ? undefined : 0,
       })
@@ -61,7 +61,7 @@ export function StressTestTab() {
 
     if (config.useCache !== cacheEnabledRef.current) {
       engineRef.current?.dispose()
-      engineRef.current = createLayoutEngine({
+      engineRef.current = new LayoutEngine({
         root: nextState.root,
         maxCachedMeasurements: config.useCache ? undefined : 0,
       })

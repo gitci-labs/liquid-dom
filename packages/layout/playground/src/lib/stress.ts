@@ -1,4 +1,4 @@
-import { frame, hstack, leaf, padding, vstack, zstack } from '@liquid-dom/layout'
+import { Frame, HStack, Leaf, Padding, VStack, ZStack } from '@liquid-dom/layout'
 import type {
   FrameNode,
   LayoutNode,
@@ -94,23 +94,23 @@ export function buildStressTree(config: StressConfig): StressTreeState {
       const groupKey = `stress-${depth}-${Math.floor(index / config.groupSize)}`
       const node =
         depth % 3 === 0
-          ? hstack({ spacing: 0, alignment: 'center' }, group)
+          ? new HStack({ spacing: 0, alignment: 'center' }).append(group)
           : depth % 3 === 1
-            ? vstack({ spacing: 0, alignment: 'leading' }, group)
-            : zstack({ alignment: 'topLeading' }, group)
+            ? new VStack({ spacing: 0, alignment: 'leading' }).append(group)
+            : new ZStack({ alignment: 'topLeading' }).append(group)
 
       boxes.push(stressGroupBox(node, groupKey, depth))
 
       let grouped: LayoutNode
       if (depth % 2 === 0) {
-        const wrapper = padding(node, { insets: 2 })
+        const wrapper = new Padding({ insets: 2 }).append(node)
         groups.push({ depth, sourceIndex: index, layout: node, wrapper, wrapperKind: 'padding' })
         grouped = wrapper
       } else {
-        const wrapper = frame(node, {
+        const wrapper = new Frame({
           maxWidth: 'infinity',
           alignment: 'topLeading',
-        })
+        }).append(node)
         groups.push({ depth, sourceIndex: index, layout: node, wrapper, wrapperKind: 'frame' })
         grouped = wrapper
       }
@@ -122,11 +122,11 @@ export function buildStressTree(config: StressConfig): StressTreeState {
   }
 
   const root = level[0] ?? stressLeaf(0, 0).node
-  const rootFrame = frame(padding(root, { horizontal: 18, vertical: 16 }), {
+  const rootFrame = new Frame({
     width: 1180,
     maxHeight: 'infinity',
     alignment: 'topLeading',
-  })
+  }).append(new Padding({ horizontal: 18, vertical: 16 }).append(root))
   const state = {
     root: rootFrame,
     rootFrame,
@@ -170,15 +170,25 @@ function stressGroupBox(node: LayoutNode, key: string, depth: number): VisualBox
   }
 }
 
+class StressLeaf extends Leaf {
+  constructor(
+    private readonly index: number,
+    private readonly band: number,
+  ) {
+    super({ measureKey: `stress-leaf:${index}:${band}` })
+  }
+
+  protected override measureLeaf() {
+    return {
+      width: 44 + (this.index % 4) * 10,
+      height: 30 + (this.index % 3) * 6 + this.band,
+    }
+  }
+}
+
 function stressLeaf(index: number, depth: number): VisualBox {
   const band = Math.floor(index / 24) % 4
-  const node = leaf({
-    measureKey: `stress-leaf:${index}:${band}`,
-    measure: () => ({
-      width: 44 + (index % 4) * 10,
-      height: 30 + (index % 3) * 6 + band,
-    }),
-  })
+  const node = new StressLeaf(index, band)
   return {
     node,
     id: `stress-${index}`,

@@ -27,9 +27,18 @@ import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js'
 import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js'
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js'
 import titleFontUrl from 'three/examples/fonts/droid/droid_sans_regular.typeface.json?url'
-import { createLayoutEngine, defineLayout, frame, leaf, padding, vstack } from '@liquid-dom/layout'
+import { LayoutEngine, Frame, Leaf, Layout, Padding, VStack } from '@liquid-dom/layout'
 import { AnimationManager, spring } from '@liquid-dom/layout/animation'
-import type { CustomLayoutNode, LayoutChild, LayoutDebugStats, LayoutNode, LeafNode, Rect, Size } from '@liquid-dom/layout'
+import type {
+  LayoutChild,
+  LayoutDebugStats,
+  LayoutMeasureInput,
+  LayoutNode,
+  LayoutPlaceInput,
+  LeafNode,
+  Rect,
+  Size,
+} from '@liquid-dom/layout'
 import type { DataTexture, WebGLRenderTarget } from 'three'
 
 type AnimatedRectView = {
@@ -59,7 +68,7 @@ type TitleView = AnimatedRectView & {
 
 type PanelView = {
   node: LayoutNode
-  grid: CustomLayoutNode
+  grid: Grid2x3
   gridPadding: LayoutNode
   title: TitleView
   background: RectMeshView
@@ -90,6 +99,19 @@ type CornerRadii = {
   topRight: number
   bottomRight: number
   bottomLeft: number
+}
+
+class MeasuredLeaf extends Leaf {
+  private readonly measureFn: () => Size
+
+  constructor(measure: () => Size, options: { measureKey?: unknown } = {}) {
+    super(options)
+    this.measureFn = measure
+  }
+
+  protected override measureLeaf(): Size {
+    return this.measureFn()
+  }
 }
 
 type CornerRadiiInput = number | CornerRadii
@@ -405,10 +427,12 @@ const titleFont = await loadTitleFont()
 function createTitleView(panelIndex: number): TitleView {
   const titleGeometry = createTitleGeometry(`Section ${panelIndex + 1}`)
   const title: TitleView = {
-    node: leaf({
-      measure: () => titleGeometry.size,
+    node: new MeasuredLeaf(
+      () => titleGeometry.size,
+      {
       measureKey: `${titleGeometry.size.width}:${titleGeometry.size.height}`,
-    }),
+      },
+    ),
     mesh: new Mesh(
       titleGeometry.geometry.clone(),
       new MeshStandardMaterial({
@@ -453,58 +477,73 @@ function createPanelBackground(): RectMeshView {
   return background
 }
 
-function createGrid(tiles: TileView[]) {
-  return defineLayout(
-    {
-      kind: 'grid-2x3',
-      props: gridProps(),
-      measure: ({ children, node }) => {
-        const props = (node as CustomLayoutNode).props as GridLayoutProps
-        const { columnWidths, rowHeights } = measureGridTracks(children, props)
-        return gridSize(columnWidths, rowHeights, props)
-      },
-      place: ({ bounds, children, node }) => {
-        const props = (node as CustomLayoutNode).props as GridLayoutProps
-        const { sizes, columnWidths, rowHeights } = measureGridTracks(children, props)
-        let y = bounds.y
+class Grid2x3 extends Layout {
+  private _props: GridLayoutProps
 
-        for (let row = 0; row < props.rows; row += 1) {
-          let x = bounds.x
-          const rowHeight = rowHeights[row] ?? 0
+  constructor(props: GridLayoutProps) {
+    super('grid-2x3')
+    this._props = props
+  }
 
-          for (let column = 0; column < props.columns; column += 1) {
-            const index = row * props.columns + column
-            const child = children[index]
-            const size = sizes[index]
-            const columnWidth = columnWidths[column] ?? 0
+  get props(): GridLayoutProps {
+    return this._props
+  }
 
-            if (child && size) {
-              child.place({
-                x: x + (columnWidth - size.width) * 0.5,
-                y: y + (rowHeight - size.height) * 0.5,
-                width: size.width,
-                height: size.height,
-              }, size)
-            }
+  set props(value: GridLayoutProps) {
+    if (Object.is(this._props, value)) return
+    this._props = value
+    this.markMeasureDirty('props')
+  }
 
-            x += columnWidth + props.columnGap
-          }
+  override measureSelf({ children }: LayoutMeasureInput): Size {
+    const { columnWidths, rowHeights } = measureGridTracks(children, this._props)
+    return gridSize(columnWidths, rowHeights, this._props)
+  }
 
-          y += rowHeight + props.rowGap
+  override placeChildren({ bounds, children }: LayoutPlaceInput): void {
+    const { sizes, columnWidths, rowHeights } = measureGridTracks(children, this._props)
+    let y = bounds.y
+
+    for (let row = 0; row < this._props.rows; row += 1) {
+      let x = bounds.x
+      const rowHeight = rowHeights[row] ?? 0
+
+      for (let column = 0; column < this._props.columns; column += 1) {
+        const index = row * this._props.columns + column
+        const child = children[index]
+        const size = sizes[index]
+        const columnWidth = columnWidths[column] ?? 0
+
+        if (child && size) {
+          child.place({
+            x: x + (columnWidth - size.width) * 0.5,
+            y: y + (rowHeight - size.height) * 0.5,
+            width: size.width,
+            height: size.height,
+          }, size)
         }
-      },
-    },
-    tiles.map((tile) => tile.node),
-  ) as CustomLayoutNode
+
+        x += columnWidth + this._props.columnGap
+      }
+
+      y += rowHeight + this._props.rowGap
+    }
+  }
+}
+
+function createGrid(tiles: TileView[]) {
+  return new Grid2x3(gridProps()).append(tiles.map((tile) => tile.node))
 }
 
 function createPanel(panelIndex: number): PanelView {
   const title = createTitleView(panelIndex)
   const tiles: TileView[] = colorPalette.map((color, tileIndex) => {
-    const node = leaf({
-      measure: () => tileSizeFor(panelIndex, tileIndex),
+    const node = new MeasuredLeaf(
+      () => tileSizeFor(panelIndex, tileIndex),
+      {
       measureKey: tileMeasureKey(panelIndex, tileIndex),
-    })
+      },
+    )
     const geometrySize = tileSizeFor(panelIndex, tileIndex)
     const mesh = new Mesh(
       createTileGeometry(geometrySize.width, geometrySize.height, tileCornerRadii(tileIndex)),
@@ -527,10 +566,10 @@ function createPanel(panelIndex: number): PanelView {
     }
   })
   const grid = createGrid(tiles)
-  const gridPadding = padding(grid, BACKGROUND_PADDING)
+  const gridPadding = new Padding(BACKGROUND_PADDING).append(grid)
 
   return {
-    node: vstack({ alignment: 'center', spacing: TITLE_PANEL_GAP }, title.node, gridPadding),
+    node: new VStack({ alignment: 'center', spacing: TITLE_PANEL_GAP }).append(title.node, gridPadding),
     grid,
     gridPadding,
     title,
@@ -541,13 +580,13 @@ function createPanel(panelIndex: number): PanelView {
 
 const panels = Array.from({ length: PANEL_COUNT }, (_, index) => createPanel(index))
 const tiles = panels.flatMap((panel) => panel.tiles)
-const rootStack = vstack({ alignment: 'center', spacing: PANEL_STACK_GAP }, panels.map((panel) => panel.node))
-const root = frame(rootStack, {
+const rootStack = new VStack({ alignment: 'center', spacing: PANEL_STACK_GAP }).append(panels.map((panel) => panel.node))
+const root = new Frame({
   maxWidth: 'infinity',
   maxHeight: 'infinity',
   alignment: 'center',
-})
-const layoutEngine = createLayoutEngine({ root })
+}).append(rootStack)
+const layoutEngine = new LayoutEngine({ root })
 const animationManager = new AnimationManager()
 
 const renderer = new WebGLRenderer({

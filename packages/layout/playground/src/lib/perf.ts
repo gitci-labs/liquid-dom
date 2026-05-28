@@ -1,4 +1,4 @@
-import { createLayoutEngine, hstack, leaf, vstack } from '@liquid-dom/layout'
+import { LayoutEngine, HStack, Leaf, VStack } from '@liquid-dom/layout'
 import type { LayoutNode } from '@liquid-dom/layout'
 import { percentile, toneFor } from './visual'
 import type { VisualBox } from './visual'
@@ -24,7 +24,23 @@ export type PerfResult = {
   measureCalls: number
   cacheHitRatio: number
   invalidations: number
-  activeSubscriptions: number
+}
+
+class ProfileLeaf extends Leaf {
+  constructor(
+    private readonly path: string,
+    notifiers: (() => void)[],
+  ) {
+    super()
+    notifiers.push(() => this.invalidateMeasure('profile'))
+  }
+
+  protected override measureLeaf() {
+    return {
+      width: 24 + (this.path.length % 5) * 8,
+      height: 18 + (this.path.length % 4) * 4,
+    }
+  }
 }
 
 export function defaultPerfConfig(): PerfConfig {
@@ -39,7 +55,7 @@ export function defaultPerfConfig(): PerfConfig {
 }
 
 export function runProfile(config: PerfConfig): PerfResult {
-  const engine = createLayoutEngine()
+  const engine = new LayoutEngine()
   const notifiers: (() => void)[] = []
   const durations: number[] = []
   let measureCalls = 0
@@ -48,7 +64,6 @@ export function runProfile(config: PerfConfig): PerfResult {
   let sample: PerfSample | undefined
   let nodes = 0
   let invalidations = 0
-  let activeSubscriptions = 0
 
   for (let iteration = 0; iteration < config.iterations; iteration += 1) {
     notifiers.splice(0)
@@ -72,7 +87,6 @@ export function runProfile(config: PerfConfig): PerfResult {
     cacheMisses += stats.cacheMisses
     nodes = stats.nodes
     invalidations = stats.invalidations
-    activeSubscriptions = stats.activeSubscriptions
     if (iteration === config.iterations - 1) sample = tree
   }
 
@@ -85,7 +99,6 @@ export function runProfile(config: PerfConfig): PerfResult {
     measureCalls,
     cacheHitRatio: cacheHits / Math.max(1, cacheHits + cacheMisses),
     invalidations,
-    activeSubscriptions,
   }
 }
 
@@ -106,15 +119,7 @@ function buildProfileTree(
   notifiers: (() => void)[],
 ): PerfSample {
   if (depth === 0) {
-    const node = leaf({
-      measure: () => ({
-        width: 24 + (path.length % 5) * 8,
-        height: 18 + (path.length % 4) * 4,
-      }),
-      subscribe: (notify) => {
-        notifiers.push(() => notify())
-      },
-    })
+    const node = new ProfileLeaf(path, notifiers)
     return {
       root: node,
       boxes: [{ node, id: path, label: path.split('-').at(-1) ?? path, tone: toneFor(path), role: 'leaf' }],
@@ -128,8 +133,8 @@ function buildProfileTree(
 
   const children = childTrees.map((tree) => tree.root)
   const root = depth % 2 === 0
-    ? hstack({ spacing: 3, alignment: 'center' }, children)
-    : vstack({ spacing: 3, alignment: 'leading' }, children)
+    ? new HStack({ spacing: 3, alignment: 'center' }).append(children)
+    : new VStack({ spacing: 3, alignment: 'leading' }).append(children)
 
   return {
     root,

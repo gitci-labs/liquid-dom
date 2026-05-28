@@ -1,4 +1,4 @@
-import { leaf } from '@liquid-dom/layout'
+import { Leaf } from '@liquid-dom/layout'
 import type { CSSProperties, ReactNode } from 'react'
 import type { LayoutNode, ProposedSize, Size } from '@liquid-dom/layout'
 
@@ -10,15 +10,23 @@ export type VisualBox = {
   role?: 'leaf' | 'group'
 }
 
+class VisualLeaf extends Leaf {
+  constructor(private readonly size: Size) {
+    super()
+  }
+
+  protected override measureLeaf(): Size {
+    return this.size
+  }
+}
+
 export function visualLeaf(
   id: string,
   size: Size,
   label: string,
   tone: VisualBox['tone'],
 ): VisualBox {
-  const node = leaf({
-    measure: () => size,
-  })
+  const node = new VisualLeaf(size)
   return { node, id, label, tone, role: 'leaf' }
 }
 
@@ -220,15 +228,13 @@ export function formatStats(stats: {
   cacheHits: number
   cacheMisses: number
   invalidations: number
-  activeSubscriptions: number
 }) {
   const total = stats.cacheHits + stats.cacheMisses
   return `measure calls: ${stats.measureCalls}
 cache hits: ${stats.cacheHits}
 cache misses: ${stats.cacheMisses}
 cache hit ratio: ${formatPercent(stats.cacheHits / Math.max(1, total))}
-invalidations: ${stats.invalidations}
-subscriptions: ${stats.activeSubscriptions}`
+invalidations: ${stats.invalidations}`
 }
 
 export function percentile(values: number[], percentileValue: number) {

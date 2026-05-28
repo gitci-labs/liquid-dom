@@ -1,32 +1,30 @@
 import type {
   ChildInput,
+  LayoutInvalidation,
+  LayoutInvalidationKind,
   LayoutNode,
   LayoutPlaceInput,
   LayoutMeasureInput,
-  LeafSubscribe,
   NodeLayout,
   Size,
 } from './types'
 
 let nextNodeId = 0
 
-export type SubscriptionSpec = {
-  subscribe: LeafSubscribe | undefined
-}
-
-export class BaseLayoutNode implements LayoutNode {
+export abstract class Layout implements LayoutNode {
   readonly __liquidDomLayout = true
   readonly id: string
   readonly kind: string
 
-  private _parent: BaseLayoutNode | null = null
-  private _children: BaseLayoutNode[] = []
+  private _parent: Layout | null = null
+  private _children: Layout[] = []
   private _layout: NodeLayout | undefined
   private _measureRevision = 0
   private _subtreeMeasureRevision = 0
   private _structureRevision = 0
   private _disposed = false
-  private readonly treeListeners = new Set<() => void>()
+  private readonly invalidationListeners = new Set<(invalidation: LayoutInvalidation) => void>()
+  private readonly layoutOwners = new Set<object>()
 
   isSpacer = false
 
@@ -64,39 +62,50 @@ export class BaseLayoutNode implements LayoutNode {
     return this._disposed
   }
 
-  append(...children: LayoutNode[]) {
-    for (const child of children) {
-      this.insertAt(this._children.length, child)
-    }
+  isLayoutActive(): boolean {
+    return this.layoutOwners.size > 0
   }
 
-  prepend(...children: LayoutNode[]) {
+  append(...children: ChildInput[]): this {
+    for (const child of normalizeChildInputs(children)) {
+      this.insertAt(this._children.length, child)
+    }
+    return this
+  }
+
+  prepend(...children: ChildInput[]): this {
     let index = 0
-    for (const child of children) {
+    for (const child of normalizeChildInputs(children)) {
       this.insertAt(index, child)
       index += 1
     }
+    return this
   }
 
-  insertBefore(child: LayoutNode, before: LayoutNode) {
+  insertBefore(child: ChildInput, before: LayoutNode): this {
     const beforeNode = asInternalNode(before)
     const index = this._children.indexOf(beforeNode)
     if (index === -1) {
       throw new Error('insertBefore expected the reference node to be a child of this layout node.')
     }
-    this.insertAt(index, child)
+    let nextIndex = index
+    for (const childNode of normalizeChildInputs([child])) {
+      this.insertAt(nextIndex, childNode)
+      nextIndex += 1
+    }
+    return this
   }
 
-  replaceChildren(...children: LayoutNode[]) {
+  replaceChildren(...children: ChildInput[]): this {
     for (const child of this._children) {
       child._parent = null
     }
     this._children = []
-    for (const child of children) {
+    for (const child of normalizeChildInputs(children)) {
       this.insertAt(this._children.length, child, false)
     }
-    this.markStructureDirty()
-    this.notifyTreeChanged()
+    this.markStructureDirty('children')
+    return this
   }
 
   remove() {
@@ -110,18 +119,14 @@ export class BaseLayoutNode implements LayoutNode {
       child.dispose()
     }
     this._disposed = true
-    this.markStructureDirty()
-    this.notifyTreeChanged()
+    this.markStructureDirty('dispose')
   }
 
   setLayout(layout: NodeLayout) {
     this._layout = layout
   }
 
-  measureSelf(input: LayoutMeasureInput): Size {
-    void input
-    return { width: 0, height: 0 }
-  }
+  abstract measureSelf(input: LayoutMeasureInput): Size
 
   placeChildren(input: LayoutPlaceInput): void {
     void input
@@ -131,31 +136,56 @@ export class BaseLayoutNode implements LayoutNode {
     return undefined
   }
 
-  getSubscriptionSpec(): SubscriptionSpec | undefined {
-    return undefined
-  }
-
-  addTreeListener(listener: () => void): () => void {
-    this.treeListeners.add(listener)
+  addInvalidationListener(listener: (invalidation: LayoutInvalidation) => void): () => void {
+    this.invalidationListeners.add(listener)
     return () => {
-      this.treeListeners.delete(listener)
+      this.invalidationListeners.delete(listener)
     }
   }
 
-  markMeasureDirty() {
+  markMeasureDirty(cause?: unknown) {
     this._measureRevision += 1
     this.markSubtreeMeasureDirty()
+    this.emitInvalidation('measure', cause)
   }
 
-  protected markPlacementDirty() {
+  protected markPlacementDirty(cause?: unknown) {
     this._structureRevision += 1
+    this.emitInvalidation('placement', cause)
   }
 
-  protected notifyTreeChanged() {
-    for (const listener of this.treeListeners) {
-      listener()
+  activateLayout(owner: object) {
+    if (this._disposed || this.layoutOwners.has(owner)) return
+    const wasInactive = this.layoutOwners.size === 0
+    this.layoutOwners.add(owner)
+    if (wasInactive) this.onLayoutActive()
+  }
+
+  deactivateLayout(owner: object) {
+    if (!this.layoutOwners.delete(owner)) return
+    if (this.layoutOwners.size === 0) this.onLayoutInactive()
+  }
+
+  protected onLayoutActive(): void {
+    return
+  }
+
+  protected onLayoutInactive(): void {
+    return
+  }
+
+  protected emitInvalidation(kind: LayoutInvalidationKind, cause?: unknown) {
+    const invalidation: LayoutInvalidation = cause === undefined
+      ? { id: this.id, node: this, kind }
+      : { id: this.id, node: this, kind, cause }
+    this.emitInvalidationRecord(invalidation)
+  }
+
+  private emitInvalidationRecord(invalidation: LayoutInvalidation) {
+    for (const listener of this.invalidationListeners) {
+      listener(invalidation)
     }
-    this._parent?.notifyTreeChanged()
+    this._parent?.emitInvalidationRecord(invalidation)
   }
 
   private insertAt(index: number, child: LayoutNode, notify = true) {
@@ -174,25 +204,23 @@ export class BaseLayoutNode implements LayoutNode {
 
     this._children.splice(nextIndex, 0, childNode)
     childNode._parent = this
-    this.markStructureDirty()
-    if (notify) this.notifyTreeChanged()
+    this.markStructureDirty('children', notify)
   }
 
-  private detachChild(childNode: BaseLayoutNode) {
+  private detachChild(childNode: Layout) {
     const index = this._children.indexOf(childNode)
     if (index === -1) return
     this._children.splice(index, 1)
     childNode._parent = null
-    this.markStructureDirty()
-    this.notifyTreeChanged()
+    this.markStructureDirty('children')
   }
 
-  private assertCanAdopt(child: BaseLayoutNode) {
+  private assertCanAdopt(child: Layout) {
     if (child === this) {
       throw new Error('A layout node cannot be inserted into itself.')
     }
 
-    let ancestor: BaseLayoutNode | null = this
+    let ancestor: Layout | null = this
     while (ancestor) {
       if (ancestor === child) {
         throw new Error('A layout node cannot be inserted into one of its descendants.')
@@ -201,9 +229,11 @@ export class BaseLayoutNode implements LayoutNode {
     }
   }
 
-  private markStructureDirty() {
+  private markStructureDirty(cause?: unknown, notify = true) {
     this._structureRevision += 1
-    this.markMeasureDirty()
+    this._measureRevision += 1
+    this.markSubtreeMeasureDirty()
+    if (notify) this.emitInvalidation('structure', cause)
   }
 
   private markSubtreeMeasureDirty() {
@@ -218,8 +248,8 @@ export function isLayoutNode(value: unknown): value is LayoutNode {
   )
 }
 
-export function asInternalNode(node: LayoutNode): BaseLayoutNode {
-  if (node instanceof BaseLayoutNode) return node
+export function asInternalNode(node: LayoutNode): Layout {
+  if (node instanceof Layout) return node
   throw new Error('Expected a layout node.')
 }
 
@@ -236,17 +266,4 @@ export function normalizeChildInputs(inputs: readonly ChildInput[]): LayoutNode[
     }
   }
   return children
-}
-
-export function splitOptions<Options extends object>(
-  args: readonly unknown[],
-  defaultOptions: Options,
-): { options: Options; children: ChildInput[] } {
-  const [first, ...rest] = args
-
-  if (first === undefined || first === null || first === false || Array.isArray(first) || isLayoutNode(first)) {
-    return { options: defaultOptions, children: args as ChildInput[] }
-  }
-
-  return { options: { ...defaultOptions, ...(first as Partial<Options>) }, children: rest as ChildInput[] }
 }

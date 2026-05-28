@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  background,
-  createLayoutEngine,
-  frame,
-  hstack,
-  leaf,
-  overlay,
-  padding,
+  Background,
+  LayoutEngine,
+  Frame,
+  HStack,
+  Leaf,
+  Overlay,
+  Padding,
 } from '@liquid-dom/layout'
-import type { LayoutEngine, LayoutNode, ProposedSize } from '@liquid-dom/layout'
+import type { LayoutNode, ProposedSize } from '@liquid-dom/layout'
 import {
   formatMs,
   lerp,
@@ -32,10 +32,18 @@ type AnimatedCardState = {
   size: { width: number; height: number }
 }
 
+class BadgeLeaf extends Leaf {
+  width = 76
+
+  protected override measureLeaf() {
+    return { width: this.width, height: 34 }
+  }
+}
+
 export function AnimatedExamplesTab() {
   const examples = useMemo(() => createAnimatedExamples(), [])
   const engines = useMemo(
-    () => examples.map((example) => createLayoutEngine({ root: example.root })),
+    () => examples.map((example) => new LayoutEngine({ root: example.root })),
     [examples],
   )
   const stageRefs = useRef<Array<HTMLDivElement | null>>([])
@@ -171,12 +179,7 @@ function createAnimatedExamples(): AnimatedExample[] {
       const a = visualLeaf('spacing-a', { width: 62, height: 38 }, 'A', 'teal')
       const b = visualLeaf('spacing-b', { width: 86, height: 50 }, 'spacing', 'blue')
       const c = visualLeaf('spacing-c', { width: 62, height: 38 }, 'C', 'red')
-      const row = hstack(
-        { spacing: 4, alignment: 'center' },
-        a.node,
-        b.node,
-        c.node,
-      )
+      const row = new HStack({ spacing: 4, alignment: 'center' }).append(a.node, b.node, c.node)
       return {
         title: 'HStack spacing',
         proposal: { width: 430, height: 120 },
@@ -190,11 +193,11 @@ function createAnimatedExamples(): AnimatedExample[] {
     (() => {
       const content = visualLeaf('padding-content', { width: 154, height: 42 }, 'content', 'blue')
       const bg = visualLeaf('padding-bg', { width: 320, height: 118 }, 'background', 'yellow')
-      const padded = padding(content.node, {
+      const padded = new Padding({
         horizontal: 8,
         vertical: 6,
-      })
-      const root = background(padded, bg.node)
+      }).append(content.node)
+      const root = new Background().append(padded, bg.node)
       return {
         title: 'Padding insets',
         proposal: { width: 430, height: 150 },
@@ -210,11 +213,11 @@ function createAnimatedExamples(): AnimatedExample[] {
     })(),
     (() => {
       const child = visualLeaf('frame-child', { width: 96, height: 42 }, 'aligned', 'teal')
-      const root = frame(child.node, {
+      const root = new Frame({
         width: 190,
         height: 82,
         alignment: 'topLeading',
-      })
+      }).append(child.node)
       return {
         title: 'Frame size + alignment',
         proposal: { width: 430, height: 160 },
@@ -228,26 +231,19 @@ function createAnimatedExamples(): AnimatedExample[] {
       }
     })(),
     (() => {
-      const badgeSize = { width: 76 }
-      const badge = leaf({
-        measure: () => ({ width: badgeSize.width, height: 34 }),
-      })
+      const badge = new BadgeLeaf()
       const badgeBox: VisualBox = { node: badge, id: 'overlay-badge', label: 'badge', tone: 'red' }
       const card = visualLeaf('overlay-card', { width: 250, height: 96 }, 'card owns layout', 'gray')
-      const overlayNode = overlay(
-        card.node,
-        badge,
-        { alignment: 'bottomLeading' },
-      )
-      const root = frame(overlayNode, { width: 330, height: 130, alignment: 'center' })
+      const overlayNode = new Overlay({ alignment: 'bottomLeading' }).append(card.node, badge)
+      const root = new Frame({ width: 330, height: 130, alignment: 'center' }).append(overlayNode)
       return {
         title: 'Overlay badge',
         proposal: { width: 430, height: 160 },
         root,
         boxes: [card, badgeBox],
         update: (phase) => {
-          badgeSize.width = lerp(76, 132, wave(phase))
-          badge.measureKey = Math.round(badgeSize.width)
+          badge.width = lerp(76, 132, wave(phase))
+          badge.measureKey = Math.round(badge.width)
           overlayNode.alignment = wave(phase + 0.25) > 0.5 ? 'topTrailing' : 'bottomLeading'
         },
       }

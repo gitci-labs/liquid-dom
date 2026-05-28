@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { createLayoutEngine, frame, hstack, padding, spacer, vstack } from '@liquid-dom/layout'
-import type { FrameNode, LayoutDebugStats, LayoutEngine, LeafNode } from '@liquid-dom/layout'
-import { domLeaf } from '@liquid-dom/layout/dom'
+import { LayoutEngine, Frame, HStack, Padding, Spacer, VStack } from '@liquid-dom/layout'
+import type { FrameNode, LayoutDebugStats } from '@liquid-dom/layout'
+import { DomLeaf } from '@liquid-dom/layout/dom'
 import { formatStats } from '../lib/visual'
 
 type DomLayoutState = {
@@ -17,9 +17,9 @@ export function DomLeavesTab() {
   const actionRef = useRef<HTMLButtonElement>(null)
   const engineRef = useRef<LayoutEngine | undefined>(undefined)
   const rootFrameRef = useRef<FrameNode | undefined>(undefined)
-  const bodyNodeRef = useRef<LeafNode | undefined>(undefined)
-  const titleNodeRef = useRef<LeafNode | undefined>(undefined)
-  const actionNodeRef = useRef<LeafNode | undefined>(undefined)
+  const bodyNodeRef = useRef<DomLeaf | undefined>(undefined)
+  const titleNodeRef = useRef<DomLeaf | undefined>(undefined)
+  const actionNodeRef = useRef<DomLeaf | undefined>(undefined)
   const frameIdRef = useRef(0)
   const scheduledRef = useRef(false)
   const disposedRef = useRef(false)
@@ -63,22 +63,22 @@ export function DomLeavesTab() {
     if (!title || !body || !action || !stage) return undefined
 
     disposedRef.current = false
-    const titleNode = domLeaf({ element: title, sizing: 'constrained-width' })
-    const bodyNode = domLeaf({ element: body, sizing: 'constrained-width' })
-    const actionNode = domLeaf({ element: action })
-    const rootFrame = frame(
-      padding(
-        vstack(
-          { spacing: 12, alignment: 'leading' },
+    const titleNode = new DomLeaf({ element: title, sizing: 'constrained-width' })
+    const bodyNode = new DomLeaf({ element: body, sizing: 'constrained-width' })
+    const actionNode = new DomLeaf({ element: action })
+    const rootFrame = new Frame({
+      width: Math.max(320, stage.clientWidth - 24),
+      alignment: 'topLeading',
+    }).append(
+      new Padding({ horizontal: 18, vertical: 16 }).append(
+        new VStack({ spacing: 12, alignment: 'leading' }).append(
           titleNode,
           bodyNode,
-          hstack({ spacing: 10, alignment: 'center' }, spacer(), actionNode),
+          new HStack({ spacing: 10, alignment: 'center' }).append(new Spacer(), actionNode),
         ),
-        { horizontal: 18, vertical: 16 },
       ),
-      { width: Math.max(320, stage.clientWidth - 24), alignment: 'topLeading' },
     )
-    const engine = createLayoutEngine({
+    const engine = new LayoutEngine({
       root: rootFrame,
       onInvalidate: scheduleLayout,
     })
@@ -149,7 +149,7 @@ export function DomLeavesTab() {
   )
 }
 
-function domNodeStyle(node: LeafNode | undefined): CSSProperties {
+function domNodeStyle(node: DomLeaf | undefined): CSSProperties {
   const rect = node ? accumulatedRect(node) : undefined
   if (!rect) return {}
 
@@ -164,7 +164,7 @@ function domNodeStyle(node: LeafNode | undefined): CSSProperties {
   }
 }
 
-function accumulatedRect(node: LeafNode) {
+function accumulatedRect(node: DomLeaf) {
   const layout = node.layout
   if (!layout) return undefined
 

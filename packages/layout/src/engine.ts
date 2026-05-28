@@ -1,52 +1,38 @@
-import { asInternalNode, BaseLayoutNode } from './node'
+import { asInternalNode, Layout } from './node'
 import type {
   LayoutChild,
   LayoutDebugStats,
-  LayoutEngine,
   LayoutEngineOptions,
+  LayoutInvalidation,
   LayoutNode,
-  LeafNode,
-  LeafSubscribe,
   ProposedSize,
   Rect,
   Size,
 } from './types'
 import { proposalKey, sanitizeProposal, sanitizeRect, sanitizeSize, stableSerialize } from './utils'
 
-type SubscriptionRecord = {
-  cleanup: (() => void) | undefined
-  node: BaseLayoutNode
-  subscribe: LeafSubscribe
-}
-
 const EMPTY_STATS: LayoutDebugStats = {
   measureCalls: 0,
   cacheHits: 0,
   cacheMisses: 0,
   invalidations: 0,
-  activeSubscriptions: 0,
   nodes: 0,
 }
 
-export function createLayoutEngine(
-  options: LayoutEngineOptions = {},
-): LayoutEngine {
-  return new DefaultLayoutEngine(options)
-}
-
-class DefaultLayoutEngine implements LayoutEngine {
-  private rootNode: BaseLayoutNode | undefined
+export class LayoutEngine {
+  private readonly layoutOwner = {}
+  private rootNode: Layout | undefined
   private readonly onInvalidate: LayoutEngineOptions['onInvalidate']
   private readonly maxCachedMeasurements: number
   private readonly measureCache = new Map<string, Size>()
-  private readonly subscriptions = new Map<string, SubscriptionRecord>()
+  private reachableNodes = new Map<string, Layout>()
   private readonly objectIds = new WeakMap<object, number>()
   private objectIdCounter = 0
   private invalidationCount = 0
   private lastStats: LayoutDebugStats = { ...EMPTY_STATS }
   private cleanupRootListener: (() => void) | undefined
 
-  constructor(options: LayoutEngineOptions) {
+  constructor(options: LayoutEngineOptions = {}) {
     this.onInvalidate = options.onInvalidate
     this.maxCachedMeasurements = options.maxCachedMeasurements ?? 50_000
     this.root = options.root
@@ -65,10 +51,10 @@ class DefaultLayoutEngine implements LayoutEngine {
     this.rootNode = nextRoot
 
     if (nextRoot) {
-      this.cleanupRootListener = nextRoot.addTreeListener(() => this.syncSubscriptions())
+      this.cleanupRootListener = nextRoot.addInvalidationListener((invalidation) => this.handleInvalidation(invalidation))
     }
 
-    this.syncSubscriptions()
+    this.syncReachableNodes()
   }
 
   layout(proposal: ProposedSize): LayoutDebugStats {
@@ -76,7 +62,7 @@ class DefaultLayoutEngine implements LayoutEngine {
       throw new Error('layout() called before assigning engine.root.')
     }
 
-    this.syncSubscriptions()
+    this.syncReachableNodes()
 
     const stats = { ...EMPTY_STATS, invalidations: this.invalidationCount }
     const cleanProposal = sanitizeProposal(proposal)
@@ -93,7 +79,6 @@ class DefaultLayoutEngine implements LayoutEngine {
       stats,
     )
 
-    stats.activeSubscriptions = this.subscriptions.size
     this.lastStats = stats
     return stats
   }
@@ -102,22 +87,19 @@ class DefaultLayoutEngine implements LayoutEngine {
     return {
       ...this.lastStats,
       invalidations: this.invalidationCount,
-      activeSubscriptions: this.subscriptions.size,
     }
   }
 
   dispose() {
     this.cleanupRootListener?.()
     this.cleanupRootListener = undefined
-    for (const id of [...this.subscriptions.keys()]) {
-      this.disposeSubscription(id)
-    }
     this.rootNode = undefined
+    this.syncReachableNodes()
     this.measureCache.clear()
   }
 
   private measureNode(
-    node: BaseLayoutNode,
+    node: Layout,
     proposal: ProposedSize,
     stats: LayoutDebugStats,
   ): Size {
@@ -146,7 +128,7 @@ class DefaultLayoutEngine implements LayoutEngine {
   }
 
   private placeNode(
-    node: BaseLayoutNode,
+    node: Layout,
     bounds: Rect,
     proposal: ProposedSize,
     stats: LayoutDebugStats,
@@ -172,7 +154,7 @@ class DefaultLayoutEngine implements LayoutEngine {
     })
   }
 
-  private childrenFor(node: BaseLayoutNode, stats: LayoutDebugStats): LayoutChild[] {
+  private childrenFor(node: Layout, stats: LayoutDebugStats): LayoutChild[] {
     return node.children.map((child) => {
       const childNode = asInternalNode(child)
       return {
@@ -187,63 +169,40 @@ class DefaultLayoutEngine implements LayoutEngine {
     })
   }
 
-  private syncSubscriptions() {
-    const reachable = new Map<string, BaseLayoutNode>()
-    if (this.rootNode && !this.rootNode.disposed) {
-      this.collectReachable(this.rootNode, reachable)
+  private handleInvalidation(invalidation: LayoutInvalidation) {
+    if (invalidation.kind === 'structure') {
+      this.syncReachableNodes()
     }
-
-    for (const [id, record] of [...this.subscriptions.entries()]) {
-      const current = reachable.get(id)
-      const spec = current?.getSubscriptionSpec()
-      if (!current || current.disposed || !spec?.subscribe || spec.subscribe !== record.subscribe) {
-        this.disposeSubscription(id)
-      }
-    }
-
-    for (const node of reachable.values()) {
-      const spec = node.getSubscriptionSpec()
-      if (!spec?.subscribe || this.subscriptions.has(node.id)) continue
-
-      const notify = (cause?: unknown) => {
-        if (!this.isReachable(node)) return
-        node.markMeasureDirty()
-        this.invalidationCount += 1
-        this.onInvalidate?.(cause === undefined ? { id: node.id, node } : { id: node.id, node, cause })
-      }
-      const cleanup = spec.subscribe(notify, node as unknown as LeafNode)
-      this.subscriptions.set(node.id, {
-        cleanup: typeof cleanup === 'function' ? cleanup : undefined,
-        node,
-        subscribe: spec.subscribe,
-      })
-    }
+    this.invalidationCount += 1
+    this.onInvalidate?.(invalidation)
   }
 
-  private collectReachable(node: BaseLayoutNode, reachable: Map<string, BaseLayoutNode>) {
+  private syncReachableNodes() {
+    const nextReachable = new Map<string, Layout>()
+    if (this.rootNode && !this.rootNode.disposed) {
+      this.collectReachable(this.rootNode, nextReachable)
+    }
+
+    for (const [id, node] of this.reachableNodes) {
+      if (!nextReachable.has(id)) node.deactivateLayout(this.layoutOwner)
+    }
+
+    for (const [id, node] of nextReachable) {
+      if (!this.reachableNodes.has(id)) node.activateLayout(this.layoutOwner)
+    }
+
+    this.reachableNodes = nextReachable
+  }
+
+  private collectReachable(node: Layout, reachable: Map<string, Layout>) {
+    if (node.disposed) return
     reachable.set(node.id, node)
     for (const child of node.children) {
       this.collectReachable(asInternalNode(child), reachable)
     }
   }
 
-  private isReachable(node: BaseLayoutNode): boolean {
-    let current: BaseLayoutNode | null = node
-    while (current) {
-      if (current === this.rootNode) return !current.disposed
-      current = current.parent ? asInternalNode(current.parent) : null
-    }
-    return false
-  }
-
-  private disposeSubscription(id: string) {
-    const record = this.subscriptions.get(id)
-    if (!record) return
-    record.cleanup?.()
-    this.subscriptions.delete(id)
-  }
-
-  private measureCacheKey(node: BaseLayoutNode, proposal: ProposedSize): string {
+  private measureCacheKey(node: Layout, proposal: ProposedSize): string {
     return [
       node.id,
       proposalKey(proposal),

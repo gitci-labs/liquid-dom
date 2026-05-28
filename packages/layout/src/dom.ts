@@ -1,5 +1,5 @@
-import { leaf } from './layouts'
-import type { LeafNode, ProposedSize, Size } from './types'
+import { Leaf } from './layouts'
+import type { ProposedSize, Size } from './types'
 
 export type DomLeafSizing = 'intrinsic' | 'constrained-width' | 'fill'
 
@@ -12,12 +12,68 @@ export type DomLeafOptions = DomMeasureOptions & {
   measureKey?: unknown
 }
 
-export function domLeaf(options: DomLeafOptions): LeafNode {
-  return leaf({
-    measureKey: options.measureKey ?? domMeasureKey(options.element, options),
-    measure: (proposal) => measureDomElement(options.element, proposal, options),
-    subscribe: (notify) => subscribeDomElement(options.element, notify),
-  })
+export class DomLeaf extends Leaf {
+  private _element: HTMLElement
+  private _sizing: DomLeafSizing
+  private cleanup: (() => void) | undefined
+
+  constructor(options: DomLeafOptions) {
+    super({
+      measureKey: options.measureKey ?? domMeasureKey(options.element, options),
+    })
+    this._element = options.element
+    this._sizing = options.sizing ?? 'intrinsic'
+  }
+
+  get element(): HTMLElement {
+    return this._element
+  }
+
+  set element(value: HTMLElement) {
+    if (this._element === value) return
+    this.stopObserving()
+    this._element = value
+    if (this.isLayoutActive()) this.startObserving()
+    this.invalidateMeasure('element')
+  }
+
+  get sizing(): DomLeafSizing {
+    return this._sizing
+  }
+
+  set sizing(value: DomLeafSizing | undefined) {
+    const next = value ?? 'intrinsic'
+    if (this._sizing === next) return
+    this._sizing = next
+    this.invalidateMeasure('sizing')
+  }
+
+  override dispose() {
+    this.stopObserving()
+    super.dispose()
+  }
+
+  protected override measureLeaf(proposal: ProposedSize): Size {
+    return measureDomElement(this._element, proposal, { sizing: this._sizing })
+  }
+
+  protected override onLayoutActive(): void {
+    this.startObserving()
+  }
+
+  protected override onLayoutInactive(): void {
+    this.stopObserving()
+  }
+
+  private startObserving() {
+    if (this.cleanup) return
+    this.cleanup = subscribeDomElement(this._element, (cause) => this.invalidateMeasure(cause))
+  }
+
+  private stopObserving() {
+    this.cleanup?.()
+    this.cleanup = undefined
+  }
 }
 
 export function measureDomElement(
@@ -102,14 +158,14 @@ export function subscribeDomElement(
       if (!sizeChanged(lastSize, nextSize)) return
 
       lastSize = nextSize
-      notify()
+      notify('resize')
     })
     observer.observe(element)
     cleanups.push(() => observer.disconnect())
   }
 
   if ('MutationObserver' in globalThis) {
-    const observer = new MutationObserver(() => notify())
+    const observer = new MutationObserver(() => notify('mutation'))
     observer.observe(element, {
       attributes: true,
       attributeFilter: ['class', 'style'],
@@ -122,7 +178,7 @@ export function subscribeDomElement(
 
   const images = element instanceof HTMLImageElement ? [element] : [...element.querySelectorAll('img')]
   for (const image of images) {
-    const listener = () => notify()
+    const listener = () => notify('image')
     image.addEventListener('load', listener)
     image.addEventListener('error', listener)
     cleanups.push(() => {
@@ -133,9 +189,9 @@ export function subscribeDomElement(
 
   const fonts = document.fonts
   if (fonts) {
-    void fonts.ready.then(() => notify())
+    void fonts.ready.then(() => notify('font'))
     if ('addEventListener' in fonts && 'removeEventListener' in fonts) {
-      const listener = () => notify()
+      const listener = () => notify('font')
       fonts.addEventListener('loadingdone', listener)
       fonts.addEventListener('loadingerror', listener)
       cleanups.push(() => {

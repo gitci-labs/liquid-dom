@@ -1,28 +1,39 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
-  background,
-  createLayoutEngine,
-  defineLayout,
-  frame,
-  hstack,
-  leaf,
-  noop,
-  overlay,
-  padding,
-  spacer,
-  vstack,
-  zstack,
+  Background,
+  LayoutEngine,
+  Frame,
+  HStack,
+  Leaf,
+  Layout,
+  Noop,
+  Overlay,
+  Padding,
+  Spacer,
+  VStack,
+  ZStack,
 } from '../src/index'
-import type { LayoutNode, ProposedSize, Rect, Size } from '../src/index'
+import type { LayoutMeasureInput, LayoutNode, LayoutPlaceInput, ProposedSize, Rect, Size } from '../src/index'
+
+class TestLeaf extends Leaf {
+  private readonly measureFn: (proposal: ProposedSize) => Size
+
+  constructor(measure: (proposal: ProposedSize) => Size, options: { measureKey?: unknown } = {}) {
+    super(options)
+    this.measureFn = measure
+  }
+
+  protected override measureLeaf(proposal: ProposedSize): Size {
+    return this.measureFn(proposal)
+  }
+}
 
 function box(size: Size, options: { measure?: (proposal: ProposedSize) => Size } = {}) {
-  return leaf({
-    measure: options.measure ?? (() => size),
-  })
+  return new TestLeaf(options.measure ?? (() => size))
 }
 
 function layout(root: LayoutNode, proposal: ProposedSize = {}) {
-  const engine = createLayoutEngine({ root })
+  const engine = new LayoutEngine({ root })
   const stats = engine.layout(proposal)
   engine.dispose()
   return stats
@@ -36,7 +47,7 @@ describe('built-in layouts', () => {
   it('lays out hstack children with spacing and cross-axis alignment', () => {
     const first = box({ width: 10, height: 10 })
     const second = box({ width: 20, height: 20 })
-    const root = hstack({ spacing: 5, alignment: 'center' }, first, second)
+    const root = new HStack({ spacing: 5, alignment: 'center' }).append(first, second)
 
     layout(root)
 
@@ -47,9 +58,9 @@ describe('built-in layouts', () => {
 
   it('expands spacers in finite hstack proposals', () => {
     const first = box({ width: 10, height: 10 })
-    const gap = spacer()
+    const gap = new Spacer()
     const second = box({ width: 10, height: 10 })
-    const root = hstack({ spacing: 0, alignment: 'top' }, first, gap, second)
+    const root = new HStack({ spacing: 0, alignment: 'top' }).append(first, gap, second)
 
     layout(root, { width: 100, height: 10 })
 
@@ -62,7 +73,7 @@ describe('built-in layouts', () => {
   it('lays out vstack children vertically', () => {
     const first = box({ width: 10, height: 10 })
     const second = box({ width: 20, height: 5 })
-    const root = vstack({ spacing: 3, alignment: 'trailing' }, first, second)
+    const root = new VStack({ spacing: 3, alignment: 'trailing' }).append(first, second)
 
     layout(root)
 
@@ -74,7 +85,7 @@ describe('built-in layouts', () => {
   it('lets zstack children jointly determine size and alignment', () => {
     const first = box({ width: 10, height: 10 })
     const second = box({ width: 30, height: 20 })
-    const root = zstack({ alignment: 'bottomTrailing' }, first, second)
+    const root = new ZStack({ alignment: 'bottomTrailing' }).append(first, second)
 
     layout(root)
 
@@ -94,7 +105,7 @@ describe('built-in layouts', () => {
         },
       },
     )
-    const root = frame(child, { width: 50, height: 20, alignment: 'trailing' })
+    const root = new Frame({ width: 50, height: 20, alignment: 'trailing' }).append(child)
 
     layout(root, { width: 100, height: 100 })
 
@@ -104,14 +115,14 @@ describe('built-in layouts', () => {
   })
 
   it('applies frame sizing behavior without children', () => {
-    const fixed = frame({ width: 50, height: 20 })
-    const ideal = frame({
+    const fixed = new Frame({ width: 50, height: 20 })
+    const ideal = new Frame({
       idealWidth: 40,
       idealHeight: 16,
       minWidth: 48,
       maxHeight: 14,
     })
-    const expanding = frame({ maxWidth: 'infinity', maxHeight: 'infinity' })
+    const expanding = new Frame({ maxWidth: 'infinity', maxHeight: 'infinity' })
 
     layout(fixed, { width: 100, height: 100 })
     layout(ideal, { width: 100, height: 100 })
@@ -124,7 +135,7 @@ describe('built-in layouts', () => {
 
   it('adds padding around child measurements and placement', () => {
     const child = box({ width: 10, height: 20 })
-    const root = padding(child, { horizontal: 4, vertical: 2 })
+    const root = new Padding({ horizontal: 4, vertical: 2 }).append(child)
 
     layout(root)
 
@@ -143,7 +154,7 @@ describe('built-in layouts', () => {
         },
       },
     )
-    const root = noop(child)
+    const root = new Noop().append(child)
 
     layout(root, { width: 30, height: 40 })
 
@@ -153,7 +164,7 @@ describe('built-in layouts', () => {
   })
 
   it('measures empty noop from the proposal', () => {
-    const root = noop()
+    const root = new Noop()
 
     layout(root, { width: 80 })
 
@@ -168,8 +179,8 @@ describe('built-in layouts', () => {
   it('stores child rects in parent-local coordinates', () => {
     const leading = box({ width: 10, height: 10 })
     const nested = box({ width: 8, height: 8 })
-    const padded = padding(nested, { left: 4 })
-    const root = hstack({ spacing: 5, alignment: 'top' }, leading, padded)
+    const padded = new Padding({ left: 4 }).append(nested)
+    const root = new HStack({ spacing: 5, alignment: 'top' }).append(leading, padded)
 
     layout(root)
 
@@ -183,8 +194,8 @@ describe('built-in layouts', () => {
     const backgroundDecoration = box({ width: 100, height: 80 })
     const overlayContent = box({ width: 20, height: 10 })
     const overlayDecoration = box({ width: 100, height: 80 })
-    const withBackground = background(backgroundContent, backgroundDecoration)
-    const withOverlay = overlay(overlayContent, overlayDecoration)
+    const withBackground = new Background().append(backgroundContent, backgroundDecoration)
+    const withOverlay = new Overlay().append(overlayContent, overlayDecoration)
 
     layout(withBackground)
     layout(withOverlay)
@@ -201,9 +212,9 @@ describe('built-in layouts', () => {
 
   it('writes rects on nodes and preserves graph metadata on nodes', () => {
     const content = box({ width: 20, height: 10 })
-    const group = vstack(content)
+    const group = new VStack().append(content)
     const decoration = box({ width: 20, height: 10 })
-    const root = background(group, decoration)
+    const root = new Background().append(group, decoration)
     const rootId = root.id
 
     const stats = layout(root)
@@ -220,30 +231,32 @@ describe('built-in layouts', () => {
   })
 
   it('supports command-style custom layout placement', () => {
+    class FlowLayout extends Layout {
+      constructor() {
+        super('flow')
+      }
+
+      override measureSelf({ children, proposal }: LayoutMeasureInput): Size {
+        const sizes = children.map((child) => child.measure(proposal))
+        return {
+          width: sizes.reduce((sum, size) => sum + size.width, 0),
+          height: sizes.reduce((max, size) => Math.max(max, size.height), 0),
+        }
+      }
+
+      override placeChildren({ bounds, children, proposal }: LayoutPlaceInput): void {
+        let x = bounds.x
+        for (const child of children) {
+          const size = child.measure(proposal)
+          child.place({ x, y: bounds.y, width: size.width, height: size.height }, size)
+          x += size.width
+        }
+      }
+    }
+
     const first = box({ width: 10, height: 8 })
     const second = box({ width: 14, height: 12 })
-    const custom = defineLayout(
-      {
-        kind: 'flow',
-        measure: ({ children, proposal }) => {
-          const sizes = children.map((child) => child.measure(proposal))
-          return {
-            width: sizes.reduce((sum, size) => sum + size.width, 0),
-            height: sizes.reduce((max, size) => Math.max(max, size.height), 0),
-          }
-        },
-        place: ({ bounds, children, proposal }) => {
-          let x = bounds.x
-          for (const child of children) {
-            const size = child.measure(proposal)
-            child.place({ x, y: bounds.y, width: size.width, height: size.height }, size)
-            x += size.width
-          }
-        },
-      },
-      first,
-      second,
-    )
+    const custom = new FlowLayout().append(first, second)
 
     layout(custom)
 
@@ -257,14 +270,16 @@ describe('mutation and caching', () => {
   it('returns stats and updates node layout when properties change', () => {
     const first = box({ width: 10, height: 10 })
     const second = box({ width: 10, height: 10 })
-    const row = hstack({ spacing: 5 }, first, second)
-    const engine = createLayoutEngine({ root: row })
+    const row = new HStack({ spacing: 5 }).append(first, second)
+    const onInvalidate = vi.fn()
+    const engine = new LayoutEngine({ root: row, onInvalidate })
 
     const firstStats = engine.layout({})
     expect(firstStats.nodes).toBe(3)
     expect(rect(row)?.width).toBe(25)
 
     row.spacing = 20
+    expect(onInvalidate).toHaveBeenLastCalledWith({ id: row.id, node: row, kind: 'measure', cause: 'spacing' })
     const secondStats = engine.layout({})
     expect(secondStats.nodes).toBe(3)
     expect(rect(row)?.width).toBe(40)
@@ -272,8 +287,8 @@ describe('mutation and caching', () => {
 
   it('does not remeasure when only alignment changes', () => {
     const child = box({ width: 10, height: 10 })
-    const row = hstack({ spacing: 5, alignment: 'top' }, child, spacer())
-    const engine = createLayoutEngine({ root: row })
+    const row = new HStack({ spacing: 5, alignment: 'top' }).append(child, new Spacer())
+    const engine = new LayoutEngine({ root: row })
 
     engine.layout({ height: 30 })
     row.alignment = 'bottom'
@@ -283,34 +298,104 @@ describe('mutation and caching', () => {
     expect(rect(child)).toEqual({ x: 0, y: 20, width: 10, height: 10 })
   })
 
+  it('lets custom subclass props choose measure or placement invalidation', () => {
+    type OffsetRowProps = {
+      gap: number
+      yOffset: number
+    }
+
+    class OffsetRow extends Layout {
+      private _props: OffsetRowProps
+
+      constructor(props: OffsetRowProps) {
+        super('offset-row')
+        this._props = props
+      }
+
+      get props(): OffsetRowProps {
+        return this._props
+      }
+
+      set props(value: OffsetRowProps) {
+        if (Object.is(this._props, value)) return
+        const previous = this._props
+        this._props = value
+        if (previous.gap !== value.gap) {
+          this.markMeasureDirty('gap')
+        } else if (previous.yOffset !== value.yOffset) {
+          this.markPlacementDirty('yOffset')
+        }
+      }
+
+      override measureSelf({ children, proposal }: LayoutMeasureInput): Size {
+        const sizes = children.map((child) => child.measure(proposal))
+        return {
+          width: sizes.reduce((sum, size) => sum + size.width, 0) + this._props.gap,
+          height: sizes.reduce((max, size) => Math.max(max, size.height), 0),
+        }
+      }
+
+      override placeChildren({ children, proposal }: LayoutPlaceInput): void {
+        let x = 0
+        for (const child of children) {
+          const size = child.measure(proposal)
+          child.place({ x, y: this._props.yOffset, width: size.width, height: size.height }, size)
+          x += size.width + this._props.gap
+        }
+      }
+    }
+
+    const first = box({ width: 10, height: 10 })
+    const second = box({ width: 10, height: 10 })
+    const row = new OffsetRow({ gap: 5, yOffset: 0 }).append(first, second)
+    const onInvalidate = vi.fn()
+    const engine = new LayoutEngine({ root: row, onInvalidate })
+
+    engine.layout({})
+    row.props = { gap: 5, yOffset: 4 }
+    const placementStats = engine.layout({})
+    expect(onInvalidate).toHaveBeenLastCalledWith({ id: row.id, node: row, kind: 'placement', cause: 'yOffset' })
+    expect(placementStats.measureCalls).toBe(0)
+    expect(rect(first)).toEqual({ x: 0, y: 4, width: 10, height: 10 })
+
+    row.props = { gap: 8, yOffset: 4 }
+    const measureStats = engine.layout({})
+    expect(onInvalidate).toHaveBeenLastCalledWith({ id: row.id, node: row, kind: 'measure', cause: 'gap' })
+    expect(measureStats.measureCalls).toBeGreaterThan(0)
+    expect(rect(row)?.width).toBe(28)
+  })
+
   it('invalidates leaf and ancestors from measure keys and explicit invalidation', () => {
     let measured = 0
-    const child = leaf({
-      measure: () => {
+    const child = new TestLeaf(
+      () => {
         measured += 1
         return { width: measured, height: 10 }
       },
-    })
-    const root = hstack(child)
-    const engine = createLayoutEngine({ root })
+    )
+    const root = new HStack().append(child)
+    const onInvalidate = vi.fn()
+    const engine = new LayoutEngine({ root, onInvalidate })
 
     engine.layout({})
     expect(rect(root)?.width).toBe(1)
     expect(engine.layout({}).measureCalls).toBe(0)
 
     child.measureKey = 'next'
+    expect(onInvalidate).toHaveBeenLastCalledWith({ id: child.id, node: child, kind: 'measure', cause: 'measureKey' })
     engine.layout({})
     expect(rect(root)?.width).toBe(2)
 
-    child.invalidateMeasure()
+    child.invalidateMeasure('manual')
+    expect(onInvalidate).toHaveBeenLastCalledWith({ id: child.id, node: child, kind: 'measure', cause: 'manual' })
     engine.layout({})
     expect(rect(root)?.width).toBe(3)
   })
 
   it('uses DOM-like reparenting semantics', () => {
     const child = box({ width: 10, height: 10 })
-    const first = hstack(child)
-    const second = vstack()
+    const first = new HStack().append(child)
+    const second = new VStack()
 
     second.append(child)
 
@@ -323,18 +408,18 @@ describe('mutation and caching', () => {
     const first = box({ width: 1, height: 1 })
     const second = box({ width: 1, height: 1 })
     const third = box({ width: 1, height: 1 })
-    const root = hstack()
+    const root = new HStack()
 
-    root.append(second)
-    root.prepend(first)
-    root.insertBefore(third, second)
+    expect(root.append(second)).toBe(root)
+    expect(root.prepend(first)).toBe(root)
+    expect(root.insertBefore(third, second)).toBe(root)
     expect(root.children).toEqual([first, third, second])
 
     third.remove()
     expect(root.children).toEqual([first, second])
     expect(third.parent).toBe(null)
 
-    root.replaceChildren(third)
+    expect(root.replaceChildren(third)).toBe(root)
     expect(first.parent).toBe(null)
     expect(second.parent).toBe(null)
     expect(root.children).toEqual([third])
@@ -344,92 +429,67 @@ describe('mutation and caching', () => {
     expect(third.parent).toBe(null)
   })
 
-  it('cleans up subscriptions when leaves are removed, replaced, or disposed', () => {
-    const cleanup = vi.fn()
-    const child = leaf({
-      measure: () => ({ width: 1, height: 1 }),
-      subscribe: () => cleanup,
-    })
-    const root = hstack(child)
-    const engine = createLayoutEngine({ root })
-
-    engine.layout({})
-    child.remove()
-    expect(cleanup).toHaveBeenCalledTimes(1)
-
-    const cleanupTwo = vi.fn()
-    const next = leaf({
-      measure: () => ({ width: 1, height: 1 }),
-      subscribe: () => cleanupTwo,
-    })
-    root.append(next)
-    engine.layout({})
-    root.replaceChildren()
-    expect(cleanupTwo).toHaveBeenCalledTimes(1)
-
-    const cleanupThree = vi.fn()
-    const disposed = leaf({
-      measure: () => ({ width: 1, height: 1 }),
-      subscribe: () => cleanupThree,
-    })
-    root.append(disposed)
-    engine.layout({})
-    disposed.dispose()
-    expect(cleanupThree).toHaveBeenCalledTimes(1)
-  })
-
-  it('reports subscription invalidations', () => {
-    let notify: ((cause?: unknown) => void) | undefined
-    let measured = 0
+  it('emits structure invalidations and updates layout activity for changed children', () => {
     const onInvalidate = vi.fn()
-    const child = leaf({
-      measure: () => {
-        measured += 1
-        return { width: measured, height: 10 }
-      },
-      subscribe: (next) => {
-        notify = next
-      },
-    })
-    const root = hstack(child)
-    const engine = createLayoutEngine({ root, onInvalidate })
+    const onActive = vi.fn()
+    const onInactive = vi.fn()
+    class ActiveLeaf extends TestLeaf {
+      protected override onLayoutActive(): void {
+        onActive()
+      }
 
-    engine.layout({})
-    expect(rect(root)?.width).toBe(1)
+      protected override onLayoutInactive(): void {
+        onInactive()
+      }
+    }
+    const root = new HStack()
+    const child = new ActiveLeaf(() => ({ width: 1, height: 1 }))
+    const engine = new LayoutEngine({ root, onInvalidate })
 
-    notify?.('resize')
-    const stats = engine.layout({})
+    expect(child.isLayoutActive()).toBe(false)
+    root.append(child)
+    expect(onInvalidate).toHaveBeenLastCalledWith({ id: root.id, node: root, kind: 'structure', cause: 'children' })
+    expect(child.isLayoutActive()).toBe(true)
+    expect(onActive).toHaveBeenCalledTimes(1)
 
-    expect(rect(root)?.width).toBe(2)
-    expect(stats.invalidations).toBe(1)
-    expect(onInvalidate).toHaveBeenCalledWith({ id: child.id, node: child, cause: 'resize' })
-  })
-
-  it('resubscribes when the subscribe function changes', () => {
-    const firstCleanup = vi.fn()
-    const secondCleanup = vi.fn()
-    const firstSubscribe = vi.fn(() => firstCleanup)
-    const secondSubscribe = vi.fn(() => secondCleanup)
-    const child = leaf({
-      measure: () => ({ width: 1, height: 1 }),
-      subscribe: firstSubscribe,
-    })
-    const engine = createLayoutEngine({ root: child })
-
-    engine.layout({})
-    expect(firstSubscribe).toHaveBeenCalledTimes(1)
-
-    child.subscribe = secondSubscribe
-
-    expect(firstCleanup).toHaveBeenCalledTimes(1)
-    expect(secondSubscribe).toHaveBeenCalledTimes(1)
+    child.remove()
+    expect(onInvalidate).toHaveBeenLastCalledWith({ id: root.id, node: root, kind: 'structure', cause: 'children' })
+    expect(child.isLayoutActive()).toBe(false)
+    expect(onInactive).toHaveBeenCalledTimes(1)
 
     engine.dispose()
-    expect(secondCleanup).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps shared roots active until the last engine detaches', () => {
+    const onActive = vi.fn()
+    const onInactive = vi.fn()
+    class ActiveLeaf extends TestLeaf {
+      protected override onLayoutActive(): void {
+        onActive()
+      }
+
+      protected override onLayoutInactive(): void {
+        onInactive()
+      }
+    }
+    const root = new ActiveLeaf(() => ({ width: 1, height: 1 }))
+    const first = new LayoutEngine({ root })
+    const second = new LayoutEngine({ root })
+
+    expect(root.isLayoutActive()).toBe(true)
+    expect(onActive).toHaveBeenCalledTimes(1)
+
+    first.dispose()
+    expect(root.isLayoutActive()).toBe(true)
+    expect(onInactive).not.toHaveBeenCalled()
+
+    second.dispose()
+    expect(root.isLayoutActive()).toBe(false)
+    expect(onInactive).toHaveBeenCalledTimes(1)
   })
 
   it('caps measurement cache growth for highly variable layouts', () => {
-    const engine = createLayoutEngine({ root: box({ width: 10, height: 10 }), maxCachedMeasurements: 4 })
+    const engine = new LayoutEngine({ root: box({ width: 10, height: 10 }), maxCachedMeasurements: 4 })
 
     for (let width = 1; width <= 10; width += 1) {
       engine.layout({ width })
@@ -439,8 +499,8 @@ describe('mutation and caching', () => {
   })
 
   it('can disable measurement caching', () => {
-    const engine = createLayoutEngine({
-      root: hstack(box({ width: 10, height: 10 }), box({ width: 10, height: 10 })),
+    const engine = new LayoutEngine({
+      root: new HStack().append(box({ width: 10, height: 10 }), box({ width: 10, height: 10 })),
       maxCachedMeasurements: 0,
     })
 

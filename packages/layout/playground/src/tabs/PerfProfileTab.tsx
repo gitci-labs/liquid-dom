@@ -69,7 +69,6 @@ export function PerfProfileTab() {
         <Metric label="Measure calls" value={result.measureCalls.toLocaleString()} />
         <Metric label="Cache hit ratio" value={formatPercent(result.cacheHitRatio)} />
         <Metric label="Invalidations" value={result.invalidations.toLocaleString()} />
-        <Metric label="Subscriptions" value={result.activeSubscriptions.toLocaleString()} />
       </div>
       {result.sample ? (
         <VisualLayoutView

@@ -1,20 +1,15 @@
-import { BaseLayoutNode, isLayoutNode, normalizeChildInputs, splitOptions } from './node'
+import { Layout } from './node'
 import type {
   Alignment,
   Axis,
-  ChildInput,
-  CustomLayoutNode,
   DecorationNode,
   FrameNode,
   Insets,
   InsetsInput,
   LayoutChild,
   LayoutMeasureInput,
-  LayoutNode,
   LayoutPlaceInput,
-  LeafMeasure,
   LeafNode,
-  LeafSubscribe,
   Length,
   NoopNode,
   PaddingNode,
@@ -74,127 +69,16 @@ export type SpacerOptions = {
   minLength?: number
 }
 
-export type LeafSpec = {
-  measure: LeafMeasure
-  subscribe?: LeafSubscribe
+export type LeafOptions = {
   measureKey?: unknown
 }
 
-export type DefineLayoutOptions = {
-  kind: string
-  props?: unknown
-  measure: (input: LayoutMeasureInput) => Size
-  place: (input: LayoutPlaceInput) => void
-}
-
-export function leaf(spec: LeafSpec): LeafNode {
-  return new LeafLayoutNode(spec)
-}
-
-export function spacer(options: SpacerOptions = {}): SpacerNode {
-  return new SpacerLayoutNode(options)
-}
-
-export function hstack(options: StackOptions, ...children: ChildInput[]): StackNode
-export function hstack(...children: ChildInput[]): StackNode
-export function hstack(...args: unknown[]): StackNode {
-  const parsed = splitOptions<StackOptions>(args, { spacing: 0, alignment: 'center' })
-  return new StackLayoutNode('horizontal', parsed.options, normalizeChildInputs(parsed.children))
-}
-
-export function vstack(options: StackOptions, ...children: ChildInput[]): StackNode
-export function vstack(...children: ChildInput[]): StackNode
-export function vstack(...args: unknown[]): StackNode {
-  const parsed = splitOptions<StackOptions>(args, { spacing: 0, alignment: 'center' })
-  return new StackLayoutNode('vertical', parsed.options, normalizeChildInputs(parsed.children))
-}
-
-export function zstack(options: ZStackOptions, ...children: ChildInput[]): ZStackNode
-export function zstack(...children: ChildInput[]): ZStackNode
-export function zstack(...args: unknown[]): ZStackNode {
-  const parsed = splitOptions<ZStackOptions>(args, { alignment: 'center' })
-  return new ZStackLayoutNode(parsed.options, normalizeChildInputs(parsed.children))
-}
-
-export function frame(node: LayoutNode, options?: FrameOptions): FrameNode
-export function frame(options?: FrameOptions): FrameNode
-export function frame(input?: LayoutNode | FrameOptions, options: FrameOptions = {}): FrameNode {
-  if (isLayoutNode(input)) {
-    return new FrameLayoutNode(options, [input])
-  }
-  return new FrameLayoutNode((input ?? {}) as FrameOptions, [])
-}
-
-export function padding(node: LayoutNode, insets?: InsetsInput): PaddingNode
-export function padding(node: LayoutNode, options?: PaddingOptions): PaddingNode
-export function padding(options?: InsetsInput | PaddingOptions): PaddingNode
-export function padding(
-  input?: LayoutNode | InsetsInput | PaddingOptions,
-  insetsOrOptions?: InsetsInput | PaddingOptions,
-): PaddingNode {
-  if (isLayoutNode(input)) {
-    return new PaddingLayoutNode(parsePaddingOptions(insetsOrOptions), [input])
-  }
-  return new PaddingLayoutNode(parsePaddingOptions(input), [])
-}
-
-export function noop(child?: LayoutNode): NoopNode {
-  return new NoopLayoutNode(child ? [child] : [])
-}
-
-export function background(
-  content: LayoutNode,
-  decoration: LayoutNode,
-  options: DecorationOptions = {},
-): DecorationNode {
-  return new DecorationLayoutNode('background', options, [content, decoration])
-}
-
-export function overlay(
-  content: LayoutNode,
-  decoration: LayoutNode,
-  options: DecorationOptions = {},
-): DecorationNode {
-  return new DecorationLayoutNode('overlay', options, [content, decoration])
-}
-
-export function defineLayout(
-  options: DefineLayoutOptions,
-  ...children: ChildInput[]
-): CustomLayoutNode {
-  return new CustomLayoutNodeImpl(options, normalizeChildInputs(children))
-}
-
-class LeafLayoutNode extends BaseLayoutNode implements LeafNode {
-  private _measure: LeafMeasure
-  private _subscribe: LeafSubscribe | undefined
+export abstract class Leaf extends Layout implements LeafNode {
   private _measureKey: unknown
 
-  constructor(spec: LeafSpec) {
+  constructor(options: LeafOptions = {}) {
     super('leaf')
-    this._measure = spec.measure
-    this._subscribe = spec.subscribe
-    this._measureKey = spec.measureKey
-  }
-
-  get measure(): LeafMeasure {
-    return this._measure
-  }
-
-  set measure(value: LeafMeasure) {
-    if (Object.is(this._measure, value)) return
-    this._measure = value
-    this.markMeasureDirty()
-  }
-
-  get subscribe(): LeafSubscribe | undefined {
-    return this._subscribe
-  }
-
-  set subscribe(value: LeafSubscribe | undefined) {
-    if (Object.is(this._subscribe, value)) return
-    this._subscribe = value
-    this.notifyTreeChanged()
+    this._measureKey = options.measureKey
   }
 
   get measureKey(): unknown {
@@ -204,32 +88,28 @@ class LeafLayoutNode extends BaseLayoutNode implements LeafNode {
   set measureKey(value: unknown) {
     if (Object.is(this._measureKey, value)) return
     this._measureKey = value
-    this.markMeasureDirty()
+    this.markMeasureDirty('measureKey')
   }
 
   override measureSelf(input: LayoutMeasureInput): Size {
-    return sanitizeSize(this._measure(input.proposal, this))
+    return sanitizeSize(this.measureLeaf(input.proposal))
   }
 
   override getMeasureKey(): unknown {
     return this._measureKey
   }
 
-  override getSubscriptionSpec() {
-    return {
-      subscribe: this._subscribe,
-    }
+  invalidateMeasure(cause?: unknown) {
+    this.markMeasureDirty(cause)
   }
 
-  invalidateMeasure(_cause?: unknown) {
-    this.markMeasureDirty()
-  }
+  protected abstract measureLeaf(proposal: ProposedSize): Size
 }
 
-class SpacerLayoutNode extends BaseLayoutNode implements SpacerNode {
+export class Spacer extends Layout implements SpacerNode {
   private _minLength: number
 
-  constructor(options: SpacerOptions) {
+  constructor(options: SpacerOptions = {}) {
     super('spacer', { isSpacer: true })
     this._minLength = options.minLength ?? 0
   }
@@ -242,7 +122,7 @@ class SpacerLayoutNode extends BaseLayoutNode implements SpacerNode {
     const next = sanitizeLength(value)
     if (this._minLength === next) return
     this._minLength = next
-    this.markMeasureDirty()
+    this.markMeasureDirty('minLength')
   }
 
   override measureSelf(): Size {
@@ -250,17 +130,16 @@ class SpacerLayoutNode extends BaseLayoutNode implements SpacerNode {
   }
 }
 
-class StackLayoutNode extends BaseLayoutNode implements StackNode {
+abstract class StackLayout extends Layout implements StackNode {
   private readonly axis: Axis
   private _spacing: number
   private _alignment: StackAlignment
 
-  constructor(axis: Axis, options: StackOptions, children: LayoutNode[]) {
+  constructor(axis: Axis, options: StackOptions = {}) {
     super(axis === 'horizontal' ? 'hstack' : 'vstack')
     this.axis = axis
     this._spacing = options.spacing ?? 0
     this._alignment = options.alignment ?? 'center'
-    this.append(...children)
   }
 
   get spacing(): number {
@@ -271,7 +150,7 @@ class StackLayoutNode extends BaseLayoutNode implements StackNode {
     const next = sanitizeLength(value)
     if (this._spacing === next) return
     this._spacing = next
-    this.markMeasureDirty()
+    this.markMeasureDirty('spacing')
   }
 
   get alignment(): StackAlignment {
@@ -281,7 +160,7 @@ class StackLayoutNode extends BaseLayoutNode implements StackNode {
   set alignment(value: StackAlignment) {
     if (this._alignment === value) return
     this._alignment = value
-    this.markPlacementDirty()
+    this.markPlacementDirty('alignment')
   }
 
   override measureSelf(input: LayoutMeasureInput): Size {
@@ -299,13 +178,24 @@ class StackLayoutNode extends BaseLayoutNode implements StackNode {
   }
 }
 
-class ZStackLayoutNode extends BaseLayoutNode implements ZStackNode {
+export class HStack extends StackLayout {
+  constructor(options: StackOptions = {}) {
+    super('horizontal', options)
+  }
+}
+
+export class VStack extends StackLayout {
+  constructor(options: StackOptions = {}) {
+    super('vertical', options)
+  }
+}
+
+export class ZStack extends Layout implements ZStackNode {
   private _alignment: Alignment
 
-  constructor(options: ZStackOptions, children: LayoutNode[]) {
+  constructor(options: ZStackOptions = {}) {
     super('zstack')
     this._alignment = options.alignment ?? 'center'
-    this.append(...children)
   }
 
   get alignment(): Alignment {
@@ -315,7 +205,7 @@ class ZStackLayoutNode extends BaseLayoutNode implements ZStackNode {
   set alignment(value: Alignment) {
     if (stableSerialize(this._alignment) === stableSerialize(value)) return
     this._alignment = value
-    this.markPlacementDirty()
+    this.markPlacementDirty('alignment')
   }
 
   override measureSelf(input: LayoutMeasureInput): Size {
@@ -337,7 +227,7 @@ class ZStackLayoutNode extends BaseLayoutNode implements ZStackNode {
   }
 }
 
-class FrameLayoutNode extends BaseLayoutNode implements FrameNode {
+export class Frame extends Layout implements FrameNode {
   private _width: number | undefined
   private _height: number | undefined
   private _minWidth: number | undefined
@@ -348,7 +238,7 @@ class FrameLayoutNode extends BaseLayoutNode implements FrameNode {
   private _maxHeight: Length | undefined
   private _alignment: Alignment
 
-  constructor(options: FrameOptions, children: LayoutNode[]) {
+  constructor(options: FrameOptions = {}) {
     super('frame')
     this._width = sanitizeOptionalLength(options.width)
     this._height = sanitizeOptionalLength(options.height)
@@ -359,7 +249,6 @@ class FrameLayoutNode extends BaseLayoutNode implements FrameNode {
     this._maxWidth = options.maxWidth
     this._maxHeight = options.maxHeight
     this._alignment = options.alignment ?? 'center'
-    this.append(...children)
   }
 
   get width(): number | undefined {
@@ -370,7 +259,7 @@ class FrameLayoutNode extends BaseLayoutNode implements FrameNode {
     const next = sanitizeOptionalLength(value)
     if (Object.is(this._width, next)) return
     this._width = next
-    this.markMeasureDirty()
+    this.markMeasureDirty('width')
   }
 
   get height(): number | undefined {
@@ -381,7 +270,7 @@ class FrameLayoutNode extends BaseLayoutNode implements FrameNode {
     const next = sanitizeOptionalLength(value)
     if (Object.is(this._height, next)) return
     this._height = next
-    this.markMeasureDirty()
+    this.markMeasureDirty('height')
   }
 
   get minWidth(): number | undefined {
@@ -392,7 +281,7 @@ class FrameLayoutNode extends BaseLayoutNode implements FrameNode {
     const next = sanitizeOptionalLength(value)
     if (Object.is(this._minWidth, next)) return
     this._minWidth = next
-    this.markMeasureDirty()
+    this.markMeasureDirty('minWidth')
   }
 
   get minHeight(): number | undefined {
@@ -403,7 +292,7 @@ class FrameLayoutNode extends BaseLayoutNode implements FrameNode {
     const next = sanitizeOptionalLength(value)
     if (Object.is(this._minHeight, next)) return
     this._minHeight = next
-    this.markMeasureDirty()
+    this.markMeasureDirty('minHeight')
   }
 
   get idealWidth(): number | undefined {
@@ -414,7 +303,7 @@ class FrameLayoutNode extends BaseLayoutNode implements FrameNode {
     const next = sanitizeOptionalLength(value)
     if (Object.is(this._idealWidth, next)) return
     this._idealWidth = next
-    this.markMeasureDirty()
+    this.markMeasureDirty('idealWidth')
   }
 
   get idealHeight(): number | undefined {
@@ -425,7 +314,7 @@ class FrameLayoutNode extends BaseLayoutNode implements FrameNode {
     const next = sanitizeOptionalLength(value)
     if (Object.is(this._idealHeight, next)) return
     this._idealHeight = next
-    this.markMeasureDirty()
+    this.markMeasureDirty('idealHeight')
   }
 
   get maxWidth(): Length | undefined {
@@ -435,7 +324,7 @@ class FrameLayoutNode extends BaseLayoutNode implements FrameNode {
   set maxWidth(value: Length | undefined) {
     if (Object.is(this._maxWidth, value)) return
     this._maxWidth = value
-    this.markMeasureDirty()
+    this.markMeasureDirty('maxWidth')
   }
 
   get maxHeight(): Length | undefined {
@@ -445,7 +334,7 @@ class FrameLayoutNode extends BaseLayoutNode implements FrameNode {
   set maxHeight(value: Length | undefined) {
     if (Object.is(this._maxHeight, value)) return
     this._maxHeight = value
-    this.markMeasureDirty()
+    this.markMeasureDirty('maxHeight')
   }
 
   get alignment(): Alignment {
@@ -455,7 +344,7 @@ class FrameLayoutNode extends BaseLayoutNode implements FrameNode {
   set alignment(value: Alignment) {
     if (stableSerialize(this._alignment) === stableSerialize(value)) return
     this._alignment = value
-    this.markPlacementDirty()
+    this.markPlacementDirty('alignment')
   }
 
   override measureSelf(input: LayoutMeasureInput): Size {
@@ -490,13 +379,12 @@ class FrameLayoutNode extends BaseLayoutNode implements FrameNode {
   }
 }
 
-class PaddingLayoutNode extends BaseLayoutNode implements PaddingNode {
+export class Padding extends Layout implements PaddingNode {
   private _insets: Insets
 
-  constructor(options: PaddingOptions, children: LayoutNode[]) {
+  constructor(options: InsetsInput | PaddingOptions = 0) {
     super('padding')
-    this._insets = normalizeInsets(options.insets)
-    this.append(...children)
+    this._insets = normalizeInsets(parsePaddingOptions(options).insets)
   }
 
   get insets(): Insets {
@@ -507,7 +395,7 @@ class PaddingLayoutNode extends BaseLayoutNode implements PaddingNode {
     const next = normalizeInsets(value)
     if (stableSerialize(this._insets) === stableSerialize(next)) return
     this._insets = next
-    this.markMeasureDirty()
+    this.markMeasureDirty('insets')
   }
 
   override measureSelf(input: LayoutMeasureInput): Size {
@@ -523,10 +411,9 @@ class PaddingLayoutNode extends BaseLayoutNode implements PaddingNode {
   }
 }
 
-class NoopLayoutNode extends BaseLayoutNode implements NoopNode {
-  constructor(children: LayoutNode[]) {
+export class Noop extends Layout implements NoopNode {
+  constructor() {
     super('noop')
-    this.append(...children)
   }
 
   override measureSelf(input: LayoutMeasureInput): Size {
@@ -541,13 +428,12 @@ class NoopLayoutNode extends BaseLayoutNode implements NoopNode {
   }
 }
 
-class DecorationLayoutNode extends BaseLayoutNode implements DecorationNode {
+abstract class DecorationLayout extends Layout implements DecorationNode {
   private _alignment: Alignment
 
-  constructor(kind: 'background' | 'overlay', options: DecorationOptions, children: LayoutNode[]) {
+  constructor(kind: 'background' | 'overlay', options: DecorationOptions = {}) {
     super(kind)
     this._alignment = options.alignment ?? 'center'
-    this.append(...children)
   }
 
   get alignment(): Alignment {
@@ -557,7 +443,7 @@ class DecorationLayoutNode extends BaseLayoutNode implements DecorationNode {
   set alignment(value: Alignment) {
     if (stableSerialize(this._alignment) === stableSerialize(value)) return
     this._alignment = value
-    this.markPlacementDirty()
+    this.markPlacementDirty('alignment')
   }
 
   override measureSelf(input: LayoutMeasureInput): Size {
@@ -578,35 +464,15 @@ class DecorationLayoutNode extends BaseLayoutNode implements DecorationNode {
   }
 }
 
-class CustomLayoutNodeImpl extends BaseLayoutNode implements CustomLayoutNode {
-  private _props: unknown
-  private readonly measureFn: (input: LayoutMeasureInput) => Size
-  private readonly placeFn: (input: LayoutPlaceInput) => void
-
-  constructor(options: DefineLayoutOptions, children: LayoutNode[]) {
-    super(options.kind)
-    this._props = options.props
-    this.measureFn = options.measure
-    this.placeFn = options.place
-    this.append(...children)
+export class Background extends DecorationLayout {
+  constructor(options: DecorationOptions = {}) {
+    super('background', options)
   }
+}
 
-  get props(): unknown {
-    return this._props
-  }
-
-  set props(value: unknown) {
-    if (Object.is(this._props, value)) return
-    this._props = value
-    this.markMeasureDirty()
-  }
-
-  override measureSelf(input: LayoutMeasureInput): Size {
-    return sanitizeSize(this.measureFn(input))
-  }
-
-  override placeChildren(input: LayoutPlaceInput): void {
-    this.placeFn(input)
+export class Overlay extends DecorationLayout {
+  constructor(options: DecorationOptions = {}) {
+    super('overlay', options)
   }
 }
 

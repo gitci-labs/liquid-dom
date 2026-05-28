@@ -105,8 +105,8 @@ the requested placement instead of immediately calling `placeNode`.
 
 ```ts
 type PlacementRecord = {
-  node: BaseLayoutNode
-  transparentPath: BaseLayoutNode[]
+  node: Layout
+  transparentPath: Layout[]
   bounds: Rect
   proposal: ProposedSize
 }

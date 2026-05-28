@@ -68,7 +68,7 @@ export default function App() {
               onClick={() => setActiveDemo('dom-measurement')}
             >
               <span>DOM measurement</span>
-              <small>Intrinsic sizing, fixed axes, and DOM subscriptions</small>
+              <small>Intrinsic sizing, fixed axes, and DOM observation</small>
             </button>
             <button
               type="button"

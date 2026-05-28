@@ -15,20 +15,25 @@ pnpm add @liquid-dom/layout
 ## Quick Start
 
 ```ts
-import { createLayoutEngine, frame, hstack, leaf, spacer } from '@liquid-dom/layout'
+import { LayoutEngine, Frame, HStack, Leaf, Spacer, type ProposedSize } from '@liquid-dom/layout'
 
-const label = leaf({
-  measure: () => ({ width: 82, height: 28 }),
-})
+class TextLeaf extends Leaf {
+  constructor(private readonly size: { width: number; height: number }) {
+    super()
+  }
 
-const button = leaf({
-  measure: () => ({ width: 68, height: 34 }),
-})
+  protected override measureLeaf(_proposal: ProposedSize) {
+    return this.size
+  }
+}
 
-const row = hstack({ spacing: 12, alignment: 'center' }, label, spacer(), button)
-const root = frame(row, { width: 320, height: 56 })
+const label = new TextLeaf({ width: 82, height: 28 })
+const button = new TextLeaf({ width: 68, height: 34 })
 
-const engine = createLayoutEngine({ root })
+const row = new HStack({ spacing: 12, alignment: 'center' }).append(label, new Spacer(), button)
+const root = new Frame({ width: 320, height: 56 }).append(row)
+
+const engine = new LayoutEngine({ root })
 const stats = engine.layout({ width: 320, height: 56 })
 
 console.log(stats.measureCalls)
@@ -43,9 +48,9 @@ engine.layout({ width: 320, height: 56 })
 ### Layout Engine
 
 ```ts
-import { createLayoutEngine } from '@liquid-dom/layout'
+import { LayoutEngine } from '@liquid-dom/layout'
 
-const engine = createLayoutEngine({
+const engine = new LayoutEngine({
   root,
   onInvalidate: () => requestAnimationFrame(render),
   maxCachedMeasurements: 50_000,
@@ -58,24 +63,23 @@ engine.dispose()
 
 `layout(proposal)` throws until `root` is assigned. It mutates reachable nodes by writing `node.layout`, then returns debug stats. Set `maxCachedMeasurements: 0` to disable measurement caching while profiling.
 
-`createLayoutEngine(options)` accepts `LayoutEngineOptions`:
+`new LayoutEngine(options)` accepts `LayoutEngineOptions`:
 
 | Option | Type | Description |
 | --- | --- | --- |
 | `root` | `LayoutNode` | Optional initial root. |
-| `onInvalidate` | `(invalidation: LayoutInvalidation) => void` | Called when a node mutation invalidates measurement. |
+| `onInvalidate` | `(invalidation: LayoutInvalidation) => void` | Called when a node mutation invalidates layout. |
 | `dev` | `boolean` | Enables development-oriented runtime checks. |
 | `maxCachedMeasurements` | `number` | Maximum measurement cache entries. Use `0` to disable caching. |
 
-`LayoutEngine` exposes `root`, `layout(proposal)`, `getDebugStats()`, and `dispose()`. `LayoutDebugStats` includes `measureCalls`, `cacheHits`, `cacheMisses`, `invalidations`, `activeSubscriptions`, and `nodes`.
+`LayoutEngine` exposes `root`, `layout(proposal)`, `getDebugStats()`, and `dispose()`. `LayoutDebugStats` includes `measureCalls`, `cacheHits`, `cacheMisses`, `invalidations`, and `nodes`.
 
 ### Layout Nodes
 
-Nodes are mutable objects. Builders such as `hstack`, `vstack`, `frame`, `padding`, and `leaf` return node instances with stable generated ids and property setters.
+Nodes are mutable objects. Public classes such as `HStack`, `VStack`, `Frame`, `Padding`, and `Leaf` create node instances with stable generated ids and property setters. Constructors take config only; attach children explicitly with node mutation methods.
 
 ```ts
-const row = hstack({ spacing: 8 })
-row.append(title, spacer(), button)
+const row = new HStack({ spacing: 8 }).append(title, new Spacer(), button)
 
 row.spacing = 16
 engine.layout({ width: 800 })
@@ -86,9 +90,12 @@ A node has one parent. Appending it to another parent automatically detaches it 
 Every node exposes:
 
 - `id`, `kind`, `parent`, `children`, and `layout`
+- `isLayoutActive()`
 - `append`, `prepend`, `insertBefore`, `replaceChildren`, `remove`, and `dispose`
 
 `layout.rect` is relative to the parent layout node. Detached nodes keep their last layout until they are laid out again.
+
+A node is layout-active while it is reachable from at least one active `LayoutEngine.root`. `Layout` subclasses can override `onLayoutActive()` and `onLayoutInactive()` to start and stop external resources such as DOM observers. Activity hooks fire synchronously with each tree mutation. Reparenting an active subtree can therefore produce a transient inactive/active pair even when the subtree is reachable again after the move; use these hooks for resources that tolerate immediate stop/start, not as debounced final-topology notifications.
 
 Core geometry and layout types:
 
@@ -113,112 +120,136 @@ Alignment types:
 
 ### Leaves
 
-`leaf(spec)` creates a renderer-owned leaf. Leaves define their own measurement behavior.
+Subclass `Leaf` for renderer-owned leaves. Leaves define their own measurement behavior with `measureLeaf`.
 
 ```ts
-const title = leaf({
-  measure: (proposal) => ({
-    width: proposal.width ?? 180,
-    height: 32,
-  }),
-  subscribe: (notify) => {
-    const unsubscribe = model.onChange(() => notify('model'))
-    return unsubscribe
-  },
-  measureKey: model.version,
-})
+class TitleLeaf extends Leaf {
+  protected override measureLeaf(proposal: ProposedSize) {
+    return {
+      width: proposal.width ?? 180,
+      height: 32,
+    }
+  }
+}
+
+const title = new TitleLeaf()
+```
+
+Use typed properties and `invalidateMeasure()` when measurement behavior changes.
+
+```ts
+class ModelTitleLeaf extends Leaf {
+  constructor(private model: TitleModel) {
+    super({ measureKey: model.version })
+  }
+
+  setModel(model: TitleModel) {
+    if (this.model === model) return
+    this.model = model
+    this.measureKey = model.version
+    this.invalidateMeasure('model')
+  }
+
+  protected override measureLeaf(proposal: ProposedSize) {
+    return {
+      width: proposal.width ?? 180,
+      height: 32,
+    }
+  }
+}
 
 title.invalidateMeasure('manual')
 ```
 
-Use `measureKey`, replace `measure`, or call `invalidateMeasure()` when measurement behavior changes outside a subscription.
-
-`LeafSpec` fields:
+`LeafOptions` fields:
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `measure` | `LeafMeasure` | Required measurement callback. |
-| `subscribe` | `LeafSubscribe` | Optional subscription that calls `notify(cause)` when measurement changes. |
 | `measureKey` | `unknown` | Cache identity for measurement behavior. |
 
-`LeafNode` extends `LayoutNode` with `measure`, `subscribe`, `measureKey`, and `invalidateMeasure(cause?)`.
+`LeafNode` extends `LayoutNode` with `measureKey` and `invalidateMeasure(cause?)`.
 
 ### Built-In Layouts
 
 ```ts
 import {
-  background,
-  defineLayout,
-  frame,
-  hstack,
-  leaf,
-  noop,
-  overlay,
-  padding,
-  spacer,
-  vstack,
-  zstack,
+  Background,
+  Frame,
+  HStack,
+  Leaf,
+  Layout,
+  Noop,
+  Overlay,
+  Padding,
+  Spacer,
+  VStack,
+  ZStack,
 } from '@liquid-dom/layout'
 ```
 
-- `hstack` and `vstack` place children along one axis with fixed spacing and cross-axis alignment.
-- `zstack` sizes to the maximum child width and height, then aligns each child inside that shared bounds.
-- `frame` proposes constraints to its child, clamps the reported size, and aligns the child inside the frame.
-- `padding` subtracts insets before measuring the child and adds them back to its own size.
-- `spacer` expands in finite proposals.
-- `noop` forwards the same proposal to its single child.
-- `background` and `overlay` place decorations in the content bounds without affecting parent layout.
-- `defineLayout` creates custom containers with explicit `measure` and `place` functions.
+- `HStack` and `VStack` place children along one axis with fixed spacing and cross-axis alignment.
+- `ZStack` sizes to the maximum child width and height, then aligns each child inside that shared bounds.
+- `Frame` proposes constraints to its child, clamps the reported size, and aligns the child inside the frame.
+- `Padding` subtracts insets before measuring the child and adds them back to its own size.
+- `Spacer` expands in finite proposals.
+- `Noop` forwards the same proposal to its single child.
+- `Background` and `Overlay` place decorations in the content bounds without affecting parent layout.
+- Custom layouts subclass `Layout` and override `measureSelf` and `placeChildren`.
 
 Built-in option types:
 
-| Builder | Option type | Options | Node properties |
+| Class | Option type | Options | Node properties |
 | --- | --- | --- | --- |
-| `hstack`, `vstack` | `StackOptions` | `spacing?: number`, `alignment?: StackAlignment` | `StackNode.spacing`, `StackNode.alignment` |
-| `zstack` | `ZStackOptions` | `alignment?: Alignment` | `ZStackNode.alignment` |
-| `frame` | `FrameOptions` | `width`, `height`, `minWidth`, `minHeight`, `idealWidth`, `idealHeight`, `maxWidth`, `maxHeight`, `alignment` | Matching `FrameNode` properties |
-| `padding` | `PaddingOptions` | `insets?: InsetsInput` | `PaddingNode.insets` |
-| `background`, `overlay` | `DecorationOptions` | `alignment?: Alignment` | `DecorationNode.alignment` |
-| `spacer` | `SpacerOptions` | `minLength?: number` | `SpacerNode.minLength` |
-| `defineLayout` | `DefineLayoutOptions` | `kind`, `props`, `measure`, `place` | `CustomLayoutNode.props` |
+| `HStack`, `VStack` | `StackOptions` | `spacing?: number`, `alignment?: StackAlignment` | `StackNode.spacing`, `StackNode.alignment` |
+| `ZStack` | `ZStackOptions` | `alignment?: Alignment` | `ZStackNode.alignment` |
+| `Frame` | `FrameOptions` | `width`, `height`, `minWidth`, `minHeight`, `idealWidth`, `idealHeight`, `maxWidth`, `maxHeight`, `alignment` | Matching `FrameNode` properties |
+| `Padding` | `PaddingOptions` or `InsetsInput` | `insets?: InsetsInput` | `PaddingNode.insets` |
+| `Background`, `Overlay` | `DecorationOptions` | `alignment?: Alignment` | `DecorationNode.alignment` |
+| `Spacer` | `SpacerOptions` | `minLength?: number` | `SpacerNode.minLength` |
 
-`frame(node, options)` and `padding(node, options)` attach an initial child. Calling them with only options creates an empty node. `noop(child?)` creates a `NoopNode`.
+Children are never constructor arguments. Use `append`, `prepend`, `insertBefore`, or `replaceChildren`.
 
 ### Custom Layouts
 
 ```ts
-const flow = defineLayout({
-  kind: 'flow',
-  measure: ({ children, proposal }) => {
+class FlowLayout extends Layout {
+  constructor() {
+    super('flow')
+  }
+
+  override measureSelf({ children, proposal }: LayoutMeasureInput): Size {
     const sizes = children.map((child) => child.measure(proposal))
     return {
       width: sizes.reduce((sum, size) => sum + size.width, 0),
       height: Math.max(0, ...sizes.map((size) => size.height)),
     }
-  },
-  place: ({ bounds, children, proposal }) => {
+  }
+
+  override placeChildren({ bounds, children, proposal }: LayoutPlaceInput): void {
     let x = bounds.x
     for (const child of children) {
       const size = child.measure(proposal)
       child.place({ x, y: bounds.y, width: size.width, height: size.height }, size)
       x += size.width
     }
-  },
-})
+  }
+}
+
+const flow = new FlowLayout().append(first, second)
 ```
 
-`place` is command-style: call `child.place(...)` directly. `bounds` is in the layout node's own local coordinate space, so direct child placements are parent-local rects.
+`placeChildren` is command-style: call `child.place(...)` directly. `bounds` is in the layout node's own local coordinate space, so direct child placements are parent-local rects.
 
 `LayoutMeasureInput` contains `proposal`, `children`, and `node`. `LayoutPlaceInput` contains `bounds`, `proposal`, `children`, and `node`. Each `LayoutChild` exposes `node`, `id`, `kind`, `isSpacer`, `measure(proposal)`, and `place(bounds, proposal?)`.
 
 ### DOM Helpers
 
-The `@liquid-dom/layout/dom` subpath provides `domLeaf`, `measureDomElement`, and `subscribeDomElement` for HTML element measurement.
+The `@liquid-dom/layout/dom` subpath provides `DomLeaf`, `measureDomElement`, and `subscribeDomElement` for HTML element measurement.
 
 ```ts
-import { domLeaf } from '@liquid-dom/layout/dom'
+import { DomLeaf } from '@liquid-dom/layout/dom'
 
-const node = domLeaf({
+const node = new DomLeaf({
   element,
   sizing: 'intrinsic',
 })
@@ -228,7 +259,7 @@ DOM helper API:
 
 | API | Description |
 | --- | --- |
-| `domLeaf({ element, sizing, measureKey })` | Creates a `LeafNode` measured from an `HTMLElement`. |
+| `DomLeaf` | A `Leaf` subclass measured from an `HTMLElement`. It observes DOM changes only while reachable from an active `LayoutEngine.root`. |
 | `measureDomElement(element, proposal?, options?)` | Measures an element clone using the selected sizing mode. |
 | `subscribeDomElement(element, notify)` | Subscribes to resize, class/style/content mutation, image load/error, and font-load changes. |
 | `DomLeafSizing` | `'intrinsic'`, `'constrained-width'`, or `'fill'`. |

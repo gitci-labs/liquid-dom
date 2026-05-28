@@ -1,15 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createLayoutEngine, frame, hstack } from '../src/index'
-import { domLeaf, measureDomElement } from '../src/dom'
+import { LayoutEngine, Frame, HStack } from '../src/index'
+import { DomLeaf, measureDomElement } from '../src/dom'
 
 type ResizeObserverCallbackLike = (entries?: ResizeObserverEntry[]) => void
 
 const resizeCallbacks: ResizeObserverCallbackLike[] = []
+const resizeObservers: FakeResizeObserver[] = []
 const originalResizeObserver = globalThis.ResizeObserver
 
 class FakeResizeObserver {
+  readonly callback: ResizeObserverCallbackLike
+
   constructor(callback: ResizeObserverCallbackLike) {
+    this.callback = callback
     resizeCallbacks.push(callback)
+    resizeObservers.push(this)
   }
 
   observe = vi.fn()
@@ -19,6 +24,7 @@ class FakeResizeObserver {
 describe('dom adapter', () => {
   beforeEach(() => {
     resizeCallbacks.splice(0)
+    resizeObservers.splice(0)
     globalThis.ResizeObserver = FakeResizeObserver as unknown as typeof ResizeObserver
     mockCloneIntrinsicSizes()
   })
@@ -32,10 +38,10 @@ describe('dom adapter', () => {
     const first = elementWithSize(30, 20)
     const second = elementWithSize(40, 10)
     document.body.append(first, second)
-    const firstNode = domLeaf({ element: first })
-    const secondNode = domLeaf({ element: second })
-    const root = hstack({ spacing: 5, alignment: 'top' }, firstNode, secondNode)
-    const engine = createLayoutEngine({ root })
+    const firstNode = new DomLeaf({ element: first })
+    const secondNode = new DomLeaf({ element: second })
+    const root = new HStack({ spacing: 5, alignment: 'top' }).append(firstNode, secondNode)
+    const engine = new LayoutEngine({ root })
 
     const stats = engine.layout({})
 
@@ -50,8 +56,8 @@ describe('dom adapter', () => {
     element.style.width = '72px'
     element.style.height = '24px'
     document.body.append(element)
-    const node = domLeaf({ element })
-    const engine = createLayoutEngine({ root: node })
+    const node = new DomLeaf({ element })
+    const engine = new LayoutEngine({ root: node })
 
     engine.layout({})
 
@@ -61,36 +67,85 @@ describe('dom adapter', () => {
     expect(element.style.boxSizing).toBe('')
   })
 
+  it('starts observing only after becoming reachable from an engine root', () => {
+    const element = elementWithSize(30, 20)
+    const node = new DomLeaf({ element })
+
+    expect(resizeCallbacks).toHaveLength(0)
+    const engine = new LayoutEngine({ root: node })
+
+    expect(resizeCallbacks).toHaveLength(1)
+    expect(resizeObservers[0]?.observe).toHaveBeenCalledWith(element)
+    engine.dispose()
+    expect(resizeObservers[0]?.disconnect).toHaveBeenCalledTimes(1)
+  })
+
   it('uses ResizeObserver invalidation for intrinsic DOM size changes', () => {
     const element = elementWithSize(30, 20)
     const onInvalidate = vi.fn()
-    const leafNode = domLeaf({ element })
-    const engine = createLayoutEngine({ root: leafNode, onInvalidate })
+    const leafNode = new DomLeaf({ element })
+    const engine = new LayoutEngine({ root: leafNode, onInvalidate })
     engine.layout({})
 
     resizeCallbacks[0]?.([resizeEntry(42, 24)])
 
-    expect(onInvalidate).toHaveBeenCalledWith({ id: leafNode.id, node: leafNode })
+    expect(onInvalidate).toHaveBeenCalledWith({ id: leafNode.id, node: leafNode, kind: 'measure', cause: 'resize' })
     expect(engine.getDebugStats().invalidations).toBe(1)
   })
 
-  it('reuses DOM subscriptions when assigning the same leaf as root again', () => {
+  it('does not observe leaves in detached subtrees', () => {
     const element = elementWithSize(30, 20)
-    const node = domLeaf({ element })
-    const engine = createLayoutEngine({ root: node })
-    engine.layout({})
-    engine.root = node
+    const node = new DomLeaf({ element })
+    const detached = new HStack().append(node)
+    const root = new HStack()
+    const engine = new LayoutEngine({ root })
 
+    expect(resizeCallbacks).toHaveLength(0)
+
+    root.append(detached)
     expect(resizeCallbacks).toHaveLength(1)
-    expect(engine.getDebugStats().activeSubscriptions).toBe(1)
+    expect(node.isLayoutActive()).toBe(true)
+
+    detached.remove()
+    expect(node.isLayoutActive()).toBe(false)
+    expect(resizeObservers[0]?.disconnect).toHaveBeenCalledTimes(1)
+
+    engine.dispose()
+  })
+
+  it('resubscribes when the observed element changes while active', () => {
+    const first = elementWithSize(30, 20)
+    const second = elementWithSize(40, 24)
+    const node = new DomLeaf({ element: first })
+    const engine = new LayoutEngine({ root: node })
+
+    expect(resizeObservers[0]?.observe).toHaveBeenCalledWith(first)
+    node.element = second
+
+    expect(resizeObservers[0]?.disconnect).toHaveBeenCalledTimes(1)
+    expect(resizeObservers[1]?.observe).toHaveBeenCalledWith(second)
+
+    engine.dispose()
+  })
+
+  it('disconnects observers when disposed', () => {
+    const element = elementWithSize(30, 20)
+    const node = new DomLeaf({ element })
+    const engine = new LayoutEngine({ root: node })
+
+    node.dispose()
+
+    expect(resizeObservers[0]?.disconnect).toHaveBeenCalledTimes(1)
+    expect(node.isLayoutActive()).toBe(false)
+    engine.dispose()
   })
 
   it('supports constrained-width measurement', () => {
     const element = document.createElement('div')
     document.body.append(element)
-    const node = domLeaf({ element, sizing: 'constrained-width' })
-    const root = frame(node, { width: 50 })
-    const engine = createLayoutEngine({ root })
+    const node = new DomLeaf({ element, sizing: 'constrained-width' })
+    const root = new Frame({ width: 50 }).append(node)
+    const engine = new LayoutEngine({ root })
 
     engine.layout({})
 
@@ -102,9 +157,9 @@ describe('dom adapter', () => {
     const element = document.createElement('div')
     element.textContent = 'long text'
     document.body.append(element)
-    const node = domLeaf({ element, sizing: 'fill' })
-    const root = frame(node, { width: 50, height: 70 })
-    const engine = createLayoutEngine({ root })
+    const node = new DomLeaf({ element, sizing: 'fill' })
+    const root = new Frame({ width: 50, height: 70 }).append(node)
+    const engine = new LayoutEngine({ root })
 
     engine.layout({})
 
@@ -135,9 +190,9 @@ describe('dom adapter', () => {
     const element = document.createElement('div')
     element.textContent = 'long text'
     document.body.append(element)
-    const node = domLeaf({ element, sizing: 'constrained-width' })
-    const root = frame(node, { width: 50 })
-    const engine = createLayoutEngine({ root })
+    const node = new DomLeaf({ element, sizing: 'constrained-width' })
+    const root = new Frame({ width: 50 }).append(node)
+    const engine = new LayoutEngine({ root })
 
     engine.layout({})
     expect(node.layout?.rect.height).toBe(80)
