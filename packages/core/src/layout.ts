@@ -47,7 +47,16 @@ import type {
   ZStackNode,
   ZStackOptions,
 } from '@liquid-dom/layout'
-import type { Point, RgbaColor, SpecularWidth, SurfaceProfile, Transform as SceneTransform } from './types'
+import type {
+  ExposureBlendAngleCurve,
+  ExposureBlendCurve,
+  NormalDivergenceBlendMode,
+  Point,
+  RgbaColor,
+  SpecularWidth,
+  SurfaceProfile,
+  Transform as SceneTransform,
+} from './types'
 
 type SceneNode = SceneContainer | SceneGlass | SceneGroup | SceneStackingContext | SceneHtml
 type SceneParent = GlassScene | SceneNode
@@ -971,13 +980,83 @@ export class GlassContainer extends SingleChildUiNode<LayoutNode, SceneContainer
     }
   }
 
-  get normalDivergenceBlendPower(): number {
-    return this.sceneNode.normalDivergenceBlendPower
+  get normalDivergenceBlendMode(): NormalDivergenceBlendMode {
+    return this.sceneNode.normalDivergenceBlendMode
   }
 
-  set normalDivergenceBlendPower(value: number) {
-    if (setProperty(this.sceneNode, 'normalDivergenceBlendPower', value)) {
-      this.invalidateFrame('normalDivergenceBlendPower')
+  set normalDivergenceBlendMode(value: NormalDivergenceBlendMode) {
+    if (setProperty(this.sceneNode, 'normalDivergenceBlendMode', value)) {
+      this.invalidateFrame('normalDivergenceBlendMode')
+    }
+  }
+
+  get normalDivergenceBlendExponentialLambda(): number {
+    return this.sceneNode.normalDivergenceBlendExponentialLambda
+  }
+
+  set normalDivergenceBlendExponentialLambda(value: number) {
+    if (setProperty(this.sceneNode, 'normalDivergenceBlendExponentialLambda', value)) {
+      this.invalidateFrame('normalDivergenceBlendExponentialLambda')
+    }
+  }
+
+  get normalDivergenceBlendGaussianLambda(): number {
+    return this.sceneNode.normalDivergenceBlendGaussianLambda
+  }
+
+  set normalDivergenceBlendGaussianLambda(value: number) {
+    if (setProperty(this.sceneNode, 'normalDivergenceBlendGaussianLambda', value)) {
+      this.invalidateFrame('normalDivergenceBlendGaussianLambda')
+    }
+  }
+
+  get normalDivergenceBlendRationalSoftness(): number {
+    return this.sceneNode.normalDivergenceBlendRationalSoftness
+  }
+
+  set normalDivergenceBlendRationalSoftness(value: number) {
+    if (setProperty(this.sceneNode, 'normalDivergenceBlendRationalSoftness', value)) {
+      this.invalidateFrame('normalDivergenceBlendRationalSoftness')
+    }
+  }
+
+  get normalDivergenceBlendBetaAlpha(): number {
+    return this.sceneNode.normalDivergenceBlendBetaAlpha
+  }
+
+  set normalDivergenceBlendBetaAlpha(value: number) {
+    if (setProperty(this.sceneNode, 'normalDivergenceBlendBetaAlpha', value)) {
+      this.invalidateFrame('normalDivergenceBlendBetaAlpha')
+    }
+  }
+
+  get normalDivergenceBlendBetaBeta(): number {
+    return this.sceneNode.normalDivergenceBlendBetaBeta
+  }
+
+  set normalDivergenceBlendBetaBeta(value: number) {
+    if (setProperty(this.sceneNode, 'normalDivergenceBlendBetaBeta', value)) {
+      this.invalidateFrame('normalDivergenceBlendBetaBeta')
+    }
+  }
+
+  get normalDivergenceBlendLogisticCenter(): number {
+    return this.sceneNode.normalDivergenceBlendLogisticCenter
+  }
+
+  set normalDivergenceBlendLogisticCenter(value: number) {
+    if (setProperty(this.sceneNode, 'normalDivergenceBlendLogisticCenter', value)) {
+      this.invalidateFrame('normalDivergenceBlendLogisticCenter')
+    }
+  }
+
+  get normalDivergenceBlendLogisticK(): number {
+    return this.sceneNode.normalDivergenceBlendLogisticK
+  }
+
+  set normalDivergenceBlendLogisticK(value: number) {
+    if (setProperty(this.sceneNode, 'normalDivergenceBlendLogisticK', value)) {
+      this.invalidateFrame('normalDivergenceBlendLogisticK')
     }
   }
 
@@ -988,6 +1067,86 @@ export class GlassContainer extends SingleChildUiNode<LayoutNode, SceneContainer
   set normalDivergenceBlendEnabled(value: boolean) {
     if (setProperty(this.sceneNode, 'normalDivergenceBlendEnabled', value)) {
       this.invalidateFrame('normalDivergenceBlendEnabled')
+    }
+  }
+
+  get exposureBlendEnabled(): boolean {
+    return this.sceneNode.exposureBlendEnabled
+  }
+
+  set exposureBlendEnabled(value: boolean) {
+    if (setProperty(this.sceneNode, 'exposureBlendEnabled', value)) {
+      this.invalidateFrame('exposureBlendEnabled')
+    }
+  }
+
+  get exposureBlendStrength(): number {
+    return this.sceneNode.exposureBlendStrength
+  }
+
+  set exposureBlendStrength(value: number) {
+    if (setProperty(this.sceneNode, 'exposureBlendStrength', value)) {
+      this.invalidateFrame('exposureBlendStrength')
+    }
+  }
+
+  get exposureBlendBandScale(): number {
+    return this.sceneNode.exposureBlendBandScale
+  }
+
+  set exposureBlendBandScale(value: number) {
+    if (setProperty(this.sceneNode, 'exposureBlendBandScale', value)) {
+      this.invalidateFrame('exposureBlendBandScale')
+    }
+  }
+
+  get exposureBlendMinBand(): number {
+    return this.sceneNode.exposureBlendMinBand
+  }
+
+  set exposureBlendMinBand(value: number) {
+    if (setProperty(this.sceneNode, 'exposureBlendMinBand', value)) {
+      this.invalidateFrame('exposureBlendMinBand')
+    }
+  }
+
+  get exposureBlendAngleRange(): number {
+    return this.sceneNode.exposureBlendAngleRange
+  }
+
+  set exposureBlendAngleRange(value: number) {
+    if (setProperty(this.sceneNode, 'exposureBlendAngleRange', value)) {
+      this.invalidateFrame('exposureBlendAngleRange')
+    }
+  }
+
+  get exposureBlendAnglePlateau(): number {
+    return this.sceneNode.exposureBlendAnglePlateau
+  }
+
+  set exposureBlendAnglePlateau(value: number) {
+    if (setProperty(this.sceneNode, 'exposureBlendAnglePlateau', value)) {
+      this.invalidateFrame('exposureBlendAnglePlateau')
+    }
+  }
+
+  get exposureBlendAngleCurve(): ExposureBlendAngleCurve {
+    return this.sceneNode.exposureBlendAngleCurve
+  }
+
+  set exposureBlendAngleCurve(value: ExposureBlendAngleCurve) {
+    if (setProperty(this.sceneNode, 'exposureBlendAngleCurve', value)) {
+      this.invalidateFrame('exposureBlendAngleCurve')
+    }
+  }
+
+  get exposureBlendCurve(): ExposureBlendCurve {
+    return this.sceneNode.exposureBlendCurve
+  }
+
+  set exposureBlendCurve(value: ExposureBlendCurve) {
+    if (setProperty(this.sceneNode, 'exposureBlendCurve', value)) {
+      this.invalidateFrame('exposureBlendCurve')
     }
   }
 

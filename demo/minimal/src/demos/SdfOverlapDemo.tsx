@@ -8,6 +8,7 @@ import {
   LiquidCanvas,
   Transform,
   ZStack,
+  type NormalDivergenceBlendMode,
 } from '@liquid-dom/react'
 import {
   deleteStoredBackgroundImage,
@@ -20,11 +21,25 @@ const GLASS_HEIGHT = 132
 const GLASS_ORIGIN = { x: 0.5, y: 0.5 }
 const INITIAL_DISTANCE = 34
 const INITIAL_VERTICAL_OFFSET = 0
+const INITIAL_LEFT_ROTATION_DEGREES = 0
+const INITIAL_RIGHT_ROTATION_DEGREES = 0
 const INITIAL_SHAPE_SCALE_X = 1
 const INITIAL_SHAPE_SCALE_Y = 1
 const INITIAL_CONTAINER_SPACING = 12
 const INITIAL_NORMAL_DIVERGENCE_BLEND_ENABLED = true
-const INITIAL_NORMAL_DIVERGENCE_BLEND_POWER = 0.5
+const INITIAL_NORMAL_DIVERGENCE_BLEND_MODE: NormalDivergenceBlendMode = 'half-chord'
+const NORMAL_DIVERGENCE_BLEND_MODE_OPTIONS = {
+  'Half-chord': 'half-chord',
+  Angle: 'angle',
+  None: 'none',
+  Smoothstep: 'smoothstep',
+  Smootherstep: 'smootherstep',
+  Exponential: 'exponential',
+  Gaussian: 'gaussian',
+  Rational: 'rational',
+  'Beta-CDF': 'beta-cdf',
+  'Logistic Window': 'logistic-window',
+} satisfies Record<string, NormalDivergenceBlendMode>
 const INITIAL_BLUR = 7
 const INITIAL_BEZEL_WIDTH = 18
 const INITIAL_DISPLACEMENT_BLUR = 8
@@ -37,6 +52,9 @@ const INITIAL_SHADOW_OFFSET_X = 0
 const INITIAL_SHADOW_OFFSET_Y = 4
 const INITIAL_SHADOW_BLUR = 34
 const INITIAL_SHADOW_SPREAD = 0
+const INITIAL_BACKGROUND_BRIGHTNESS = 1
+const INITIAL_BACKGROUND_TRANSLATE_X = 0
+const INITIAL_BACKGROUND_TRANSLATE_Y = 0
 
 export default function SdfOverlapDemo() {
   const [backgroundImageUrl, setBackgroundImageUrl] = useState<string | null>(null)
@@ -46,11 +64,13 @@ export default function SdfOverlapDemo() {
   const {
     distance,
     verticalOffset,
+    leftRotationDegrees,
+    rightRotationDegrees,
     shapeScaleX,
     shapeScaleY,
     containerSpacing,
     normalDivergenceBlendEnabled,
-    normalDivergenceBlendPower,
+    normalDivergenceBlendMode,
     blur,
     bezelWidth,
     displacementBlur,
@@ -81,6 +101,20 @@ export default function SdfOverlapDemo() {
         step: 1,
         label: 'Vertical offset',
       },
+      leftRotationDegrees: {
+        value: INITIAL_LEFT_ROTATION_DEGREES,
+        min: 0,
+        max: 360,
+        step: 1,
+        label: 'Left rotation',
+      },
+      rightRotationDegrees: {
+        value: INITIAL_RIGHT_ROTATION_DEGREES,
+        min: 0,
+        max: 360,
+        step: 1,
+        label: 'Right rotation',
+      },
       shapeScaleX: {
         value: INITIAL_SHAPE_SCALE_X,
         min: 0.25,
@@ -102,12 +136,10 @@ export default function SdfOverlapDemo() {
         step: 1,
         label: 'Container spacing',
       },
-      normalDivergenceBlendPower: {
-        value: INITIAL_NORMAL_DIVERGENCE_BLEND_POWER,
-        min: 0.1,
-        max: 12,
-        step: 0.1,
-        label: 'Normal gate power',
+      normalDivergenceBlendMode: {
+        value: INITIAL_NORMAL_DIVERGENCE_BLEND_MODE,
+        options: NORMAL_DIVERGENCE_BLEND_MODE_OPTIONS,
+        label: 'Normal gate mode',
       },
       normalDivergenceBlendEnabled: {
         value: INITIAL_NORMAL_DIVERGENCE_BLEND_ENABLED,
@@ -207,17 +239,40 @@ export default function SdfOverlapDemo() {
       },
     }, { collapsed: false }),
   })
-  const [, setBackgroundImageControls] = useControls('SDF background image', () => ({
+  const [{ backgroundBrightness, backgroundTranslateX, backgroundTranslateY }, setBackgroundImageControls] = useControls('SDF background image', () => ({
     currentImage: {
       value: 'None',
       label: 'Current image',
       editable: false,
+    },
+    backgroundBrightness: {
+      value: INITIAL_BACKGROUND_BRIGHTNESS,
+      min: 0,
+      max: 1,
+      step: 0.01,
+      label: 'Image brightness',
+    },
+    backgroundTranslateX: {
+      value: INITIAL_BACKGROUND_TRANSLATE_X,
+      min: -300,
+      max: 300,
+      step: 1,
+      label: 'Image X',
+    },
+    backgroundTranslateY: {
+      value: INITIAL_BACKGROUND_TRANSLATE_Y,
+      min: -300,
+      max: 300,
+      step: 1,
+      label: 'Image Y',
     },
     'Choose image': button(() => backgroundImageInputRef.current?.click()),
     'Clear image': button(clearBackgroundImage),
   }))
   const centerOffset = (GLASS_WIDTH * shapeScaleX + distance) / 2
   const verticalCenterOffset = verticalOffset / 2
+  const leftRotation = degreesToRadians(leftRotationDegrees)
+  const rightRotation = degreesToRadians(rightRotationDegrees)
   const tintColor = hexToRgb(tintHex)
   const shadowColor = hexToRgb(shadowHex)
 
@@ -293,6 +348,10 @@ export default function SdfOverlapDemo() {
                 alt=""
                 className="sdf-overlap-background-image"
                 src={backgroundImageUrl}
+                style={{
+                  filter: `brightness(${backgroundBrightness})`,
+                  objectPosition: `calc(50% + ${backgroundTranslateX}px) calc(50% + ${backgroundTranslateY}px)`,
+                }}
               />
             </Html>
           ) : null}
@@ -302,7 +361,7 @@ export default function SdfOverlapDemo() {
               blur={blur}
               spacing={containerSpacing}
               normalDivergenceBlendEnabled={normalDivergenceBlendEnabled}
-              normalDivergenceBlendPower={normalDivergenceBlendPower}
+              normalDivergenceBlendMode={normalDivergenceBlendMode}
               bezelWidth={bezelWidth}
               displacementBlur={displacementBlur}
               thickness={86}
@@ -322,6 +381,7 @@ export default function SdfOverlapDemo() {
                   y={-verticalCenterOffset}
                   scaleX={shapeScaleX}
                   scaleY={shapeScaleY}
+                  rotation={leftRotation}
                   origin={GLASS_ORIGIN}
                 >
                   <OverlapGlass cornerRadius={cornerRadius} />
@@ -331,6 +391,7 @@ export default function SdfOverlapDemo() {
                   y={verticalCenterOffset}
                   scaleX={shapeScaleX}
                   scaleY={shapeScaleY}
+                  rotation={rightRotation}
                   origin={GLASS_ORIGIN}
                 >
                   <OverlapGlass cornerRadius={cornerRadius} />
@@ -357,6 +418,10 @@ export default function SdfOverlapDemo() {
       />
     </section>
   )
+}
+
+function degreesToRadians(degrees: number) {
+  return degrees * Math.PI / 180
 }
 
 function OverlapGlass({ cornerRadius }: { cornerRadius: number }) {

@@ -14,6 +14,7 @@ import {
   flattenContainerGlasses,
   flattenGlassHtml,
   flattenSceneLayers,
+  Container as SceneContainer,
   Glass as SceneGlass,
   Html as SceneHtml,
 } from '../src/scene'
@@ -185,6 +186,125 @@ describe('layout UI tree', () => {
     glass.cornerRadius = 18
 
     expect(events).toEqual(['layout', 'frame'])
+  })
+
+  it('stores normal-divergence blend mode on scene containers', () => {
+    const defaultContainer = new SceneContainer()
+    expect(defaultContainer.normalDivergenceBlendMode).toBe('half-chord')
+    expect(defaultContainer.normalDivergenceBlendExponentialLambda).toBe(4)
+    expect(defaultContainer.normalDivergenceBlendGaussianLambda).toBe(4)
+    expect(defaultContainer.normalDivergenceBlendRationalSoftness).toBe(0.5)
+    expect(defaultContainer.normalDivergenceBlendBetaAlpha).toBe(1.5)
+    expect(defaultContainer.normalDivergenceBlendBetaBeta).toBe(2.2)
+    expect(defaultContainer.normalDivergenceBlendLogisticCenter).toBe(0.5)
+    expect(defaultContainer.normalDivergenceBlendLogisticK).toBe(12)
+    expect(defaultContainer.exposureBlendEnabled).toBe(true)
+    expect(defaultContainer.exposureBlendStrength).toBe(1)
+    expect(defaultContainer.exposureBlendBandScale).toBe(0.35)
+    expect(defaultContainer.exposureBlendMinBand).toBe(1)
+    expect(defaultContainer.exposureBlendAngleRange).toBe(Math.PI / 2)
+    expect(defaultContainer.exposureBlendAnglePlateau).toBe(Math.PI / 6)
+    expect(defaultContainer.exposureBlendAngleCurve).toBe('plateau')
+    expect(defaultContainer.exposureBlendCurve).toBe('smootherstep')
+
+    const container = new SceneContainer({
+      normalDivergenceBlendMode: 'smoothstep',
+      normalDivergenceBlendExponentialLambda: 2.5,
+      normalDivergenceBlendGaussianLambda: 3.5,
+      normalDivergenceBlendRationalSoftness: 0.4,
+      normalDivergenceBlendBetaAlpha: 1.8,
+      normalDivergenceBlendBetaBeta: 2.6,
+      normalDivergenceBlendLogisticCenter: 0.45,
+      normalDivergenceBlendLogisticK: 14,
+      exposureBlendEnabled: false,
+      exposureBlendStrength: 0.6,
+      exposureBlendBandScale: 0.75,
+      exposureBlendMinBand: 2,
+      exposureBlendAngleRange: Math.PI / 4,
+      exposureBlendAnglePlateau: Math.PI / 12,
+      exposureBlendAngleCurve: 'triangle',
+      exposureBlendCurve: 'smoothstep',
+    })
+    expect(container.normalDivergenceBlendMode).toBe('smoothstep')
+    expect(container.normalDivergenceBlendExponentialLambda).toBe(2.5)
+    expect(container.normalDivergenceBlendGaussianLambda).toBe(3.5)
+    expect(container.normalDivergenceBlendRationalSoftness).toBe(0.4)
+    expect(container.normalDivergenceBlendBetaAlpha).toBe(1.8)
+    expect(container.normalDivergenceBlendBetaBeta).toBe(2.6)
+    expect(container.normalDivergenceBlendLogisticCenter).toBe(0.45)
+    expect(container.normalDivergenceBlendLogisticK).toBe(14)
+    expect(container.exposureBlendEnabled).toBe(false)
+    expect(container.exposureBlendStrength).toBe(0.6)
+    expect(container.exposureBlendBandScale).toBe(0.75)
+    expect(container.exposureBlendMinBand).toBe(2)
+    expect(container.exposureBlendAngleRange).toBe(Math.PI / 4)
+    expect(container.exposureBlendAnglePlateau).toBe(Math.PI / 12)
+    expect(container.exposureBlendAngleCurve).toBe('triangle')
+    expect(container.exposureBlendCurve).toBe('smoothstep')
+
+    container.normalDivergenceBlendMode = 'none'
+    expect(container.normalDivergenceBlendMode).toBe('none')
+
+    container.normalDivergenceBlendMode = 'smootherstep'
+    container.normalDivergenceBlendBetaAlpha = 1.2
+    container.normalDivergenceBlendBetaBeta = 3.4
+    container.normalDivergenceBlendLogisticCenter = 0.6
+    container.normalDivergenceBlendLogisticK = 8
+    container.exposureBlendEnabled = true
+    container.exposureBlendStrength = 0.25
+    container.exposureBlendBandScale = 1.25
+    container.exposureBlendMinBand = 3
+    container.exposureBlendAngleRange = Math.PI / 3
+    container.exposureBlendAnglePlateau = Math.PI / 8
+    container.exposureBlendAngleCurve = 'none'
+    container.exposureBlendCurve = 'smootherstep'
+    expect(container.normalDivergenceBlendMode).toBe('smootherstep')
+    expect(container.normalDivergenceBlendBetaAlpha).toBe(1.2)
+    expect(container.normalDivergenceBlendBetaBeta).toBe(3.4)
+    expect(container.normalDivergenceBlendLogisticCenter).toBe(0.6)
+    expect(container.normalDivergenceBlendLogisticK).toBe(8)
+    expect(container.exposureBlendEnabled).toBe(true)
+    expect(container.exposureBlendStrength).toBe(0.25)
+    expect(container.exposureBlendBandScale).toBe(1.25)
+    expect(container.exposureBlendMinBand).toBe(3)
+    expect(container.exposureBlendAngleRange).toBe(Math.PI / 3)
+    expect(container.exposureBlendAnglePlateau).toBe(Math.PI / 8)
+    expect(container.exposureBlendAngleCurve).toBe('none')
+    expect(container.exposureBlendCurve).toBe('smootherstep')
+  })
+
+  it('propagates normal-divergence blend mode changes and invalidates frames', () => {
+    const scene = new LayoutScene()
+    const container = scene.add(new GlassContainer({
+      normalDivergenceBlendMode: 'half-chord',
+    }))
+    const events: string[] = []
+    scene.addInvalidationListener((event) => events.push(event.kind))
+
+    container.normalDivergenceBlendMode = 'smootherstep'
+    container.normalDivergenceBlendExponentialLambda = 7
+    container.normalDivergenceBlendBetaAlpha = 1.7
+    container.exposureBlendEnabled = false
+    container.exposureBlendStrength = 0.5
+    container.exposureBlendBandScale = 1.1
+    container.exposureBlendMinBand = 2.5
+    container.exposureBlendAngleRange = Math.PI / 6
+    container.exposureBlendAnglePlateau = Math.PI / 18
+    container.exposureBlendAngleCurve = 'cosine-peak'
+    container.exposureBlendCurve = 'smoothstep'
+
+    expect(container.sceneNode.normalDivergenceBlendMode).toBe('smootherstep')
+    expect(container.sceneNode.normalDivergenceBlendExponentialLambda).toBe(7)
+    expect(container.sceneNode.normalDivergenceBlendBetaAlpha).toBe(1.7)
+    expect(container.sceneNode.exposureBlendEnabled).toBe(false)
+    expect(container.sceneNode.exposureBlendStrength).toBe(0.5)
+    expect(container.sceneNode.exposureBlendBandScale).toBe(1.1)
+    expect(container.sceneNode.exposureBlendMinBand).toBe(2.5)
+    expect(container.sceneNode.exposureBlendAngleRange).toBe(Math.PI / 6)
+    expect(container.sceneNode.exposureBlendAnglePlateau).toBe(Math.PI / 18)
+    expect(container.sceneNode.exposureBlendAngleCurve).toBe('cosine-peak')
+    expect(container.sceneNode.exposureBlendCurve).toBe('smoothstep')
+    expect(events).toEqual(['frame', 'frame', 'frame', 'frame', 'frame', 'frame', 'frame', 'frame', 'frame', 'frame', 'frame'])
   })
 
   it('stores uniform glass corner radius and smoothing on scene nodes', () => {

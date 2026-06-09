@@ -64,7 +64,13 @@ import {
   SHADOW_MASK_SHADER,
   TEXTURE_BLIT_SHADER,
 } from '../shaders'
-import type { SpecularWidth, SurfaceProfile } from '../types'
+import type {
+  ExposureBlendAngleCurve,
+  ExposureBlendCurve,
+  NormalDivergenceBlendMode,
+  SpecularWidth,
+  SurfaceProfile,
+} from '../types'
 
 /** Resolves public specular-width semantics into the shader's device-pixel space. */
 export function resolveSpecularWidthPx(specularWidth: SpecularWidth, dpr: number) {
@@ -112,6 +118,72 @@ function getSurfaceProfileIndex(profile: SurfaceProfile) {
   return 2
 }
 
+/** Maps a public normal-divergence mode string to the shader enum value. */
+function getNormalDivergenceBlendModeIndex(mode: NormalDivergenceBlendMode) {
+  if (mode === 'angle') {
+    return 1
+  }
+  if (mode === 'none') {
+    return 2
+  }
+  if (mode === 'smoothstep') {
+    return 3
+  }
+  if (mode === 'smootherstep') {
+    return 4
+  }
+  if (mode === 'exponential') {
+    return 5
+  }
+  if (mode === 'gaussian') {
+    return 6
+  }
+  if (mode === 'rational') {
+    return 7
+  }
+  if (mode === 'beta-cdf') {
+    return 8
+  }
+  if (mode === 'logistic-window') {
+    return 9
+  }
+  return 0
+}
+
+/** Maps exposure blend settings to the shader enum value. Zero disables exposure blending. */
+function getExposureBlendModeIndex(enabled: boolean, curve: ExposureBlendCurve) {
+  if (!enabled) {
+    return 0
+  }
+
+  if (curve === 'smootherstep') {
+    return 2
+  }
+  if (curve === 'smoothstep-in') {
+    return 3
+  }
+  if (curve === 'smoothstep-out') {
+    return 4
+  }
+  return 1
+}
+
+/** Maps the exposure angle window curve to the shader enum value. */
+function getExposureBlendAngleCurveIndex(curve: ExposureBlendAngleCurve) {
+  if (curve === 'triangle') {
+    return 1
+  }
+  if (curve === 'plateau') {
+    return 2
+  }
+  if (curve === 'sine') {
+    return 3
+  }
+  if (curve === 'cosine-peak') {
+    return 4
+  }
+  return 0
+}
 
 /** Texture-in/texture-out WebGPU compositor for a liquid-glass scene graph. */
 export class WebGpuGlassCore {
@@ -396,8 +468,32 @@ export class WebGpuGlassCore {
         surfaceProfile: getSurfaceProfileIndex(container.surfaceProfile),
       },
       sdf: {
-        normalDivergenceBlendPower: container.normalDivergenceBlendPower,
+        normalDivergenceBlendMode: getNormalDivergenceBlendModeIndex(container.normalDivergenceBlendMode),
         normalDivergenceBlendEnabled: container.normalDivergenceBlendEnabled ? 1 : 0,
+      },
+      sdfParams0: {
+        exponentialLambda: container.normalDivergenceBlendExponentialLambda,
+        gaussianLambda: container.normalDivergenceBlendGaussianLambda,
+        rationalSoftness: container.normalDivergenceBlendRationalSoftness,
+      },
+      sdfParams1: {
+        logisticCenter: container.normalDivergenceBlendLogisticCenter,
+        logisticK: container.normalDivergenceBlendLogisticK,
+      },
+      sdfParams2: {
+        betaAlpha: container.normalDivergenceBlendBetaAlpha,
+        betaBeta: container.normalDivergenceBlendBetaBeta,
+      },
+      sdfParams3: {
+        exposureStrength: container.exposureBlendStrength,
+        exposureBandScale: container.exposureBlendBandScale,
+        exposureMinBand: container.exposureBlendMinBand * dpr,
+        exposureMode: getExposureBlendModeIndex(container.exposureBlendEnabled, container.exposureBlendCurve),
+      },
+      sdfParams4: {
+        exposureAngleRange: container.exposureBlendAngleRange,
+        exposureAnglePlateau: container.exposureBlendAnglePlateau,
+        exposureAngleMode: getExposureBlendAngleCurveIndex(container.exposureBlendAngleCurve),
       },
       glass: {
         thickness: container.thickness * dpr,

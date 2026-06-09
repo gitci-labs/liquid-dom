@@ -54,6 +54,7 @@ export function useAnimatedProps<Target extends object, Values extends PropValue
   useLayoutEffect(() => {
     const previous = previousRef.current
     previousRef.current = values
+    let assignedImmediately = false
 
     for (const [property, value] of Object.entries(values)) {
       if (value === undefined && !assignUndefined) {
@@ -78,7 +79,12 @@ export function useAnimatedProps<Target extends object, Values extends PropValue
       } else {
         root.animationManager.stop(target, [property])
         assignProperty(target, property, value)
+        assignedImmediately = true
       }
+    }
+
+    if (assignedImmediately) {
+      root.invalidateFrame()
     }
 
     mountedRef.current = true

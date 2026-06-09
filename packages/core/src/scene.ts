@@ -5,7 +5,16 @@ import {
   sanitizeCornerSmoothing,
 } from './corner-smoothing'
 import { composeTransform, identityMatrix, multiplyMatrices, type Matrix2D } from './matrix'
-import type { Point, RgbaColor, SpecularWidth, SurfaceProfile, Transform } from './types'
+import type {
+  ExposureBlendAngleCurve,
+  ExposureBlendCurve,
+  NormalDivergenceBlendMode,
+  Point,
+  RgbaColor,
+  SpecularWidth,
+  SurfaceProfile,
+  Transform,
+} from './types'
 
 /**
  * Constructor options for a {@link Html} node.
@@ -52,8 +61,23 @@ export type ContainerInit = Partial<Transform> & {
   thickness?: number
   displacementFactor?: number
   displacementBlur?: number
-  normalDivergenceBlendPower?: number
+  normalDivergenceBlendMode?: NormalDivergenceBlendMode
+  normalDivergenceBlendExponentialLambda?: number
+  normalDivergenceBlendGaussianLambda?: number
+  normalDivergenceBlendRationalSoftness?: number
+  normalDivergenceBlendBetaAlpha?: number
+  normalDivergenceBlendBetaBeta?: number
+  normalDivergenceBlendLogisticCenter?: number
+  normalDivergenceBlendLogisticK?: number
   normalDivergenceBlendEnabled?: boolean
+  exposureBlendEnabled?: boolean
+  exposureBlendStrength?: number
+  exposureBlendBandScale?: number
+  exposureBlendMinBand?: number
+  exposureBlendAngleRange?: number
+  exposureBlendAnglePlateau?: number
+  exposureBlendAngleCurve?: ExposureBlendAngleCurve
+  exposureBlendCurve?: ExposureBlendCurve
   ior?: number
   contentIor?: number
   contentDepth?: number
@@ -656,13 +680,40 @@ export class Container implements Transform {
   displacementFactor = 1
   /** Blur radius applied to the precomputed displacement field in CSS pixels. */
   displacementBlur = 6
-  /**
-   * Exponent shaping SDF smooth-union normal gating.
-   * Higher values suppress blending longer as boundary normals diverge.
-   */
-  normalDivergenceBlendPower = 0.5
+  /** Metric used to scale smooth-union blending by normal divergence. */
+  normalDivergenceBlendMode: NormalDivergenceBlendMode = 'half-chord'
+  /** Lambda used by the exponential normal-divergence blend mode. */
+  normalDivergenceBlendExponentialLambda = 4
+  /** Lambda used by the Gaussian normal-divergence blend mode. */
+  normalDivergenceBlendGaussianLambda = 4
+  /** Softness used by the rational normal-divergence blend mode. */
+  normalDivergenceBlendRationalSoftness = 0.5
+  /** Alpha shape parameter used by the Beta-CDF normal-divergence blend mode. */
+  normalDivergenceBlendBetaAlpha = 1.5
+  /** Beta shape parameter used by the Beta-CDF normal-divergence blend mode. */
+  normalDivergenceBlendBetaBeta = 2.2
+  /** Center used by the logistic-window normal-divergence blend mode. */
+  normalDivergenceBlendLogisticCenter = 0.5
+  /** Steepness used by the logistic-window normal-divergence blend mode. */
+  normalDivergenceBlendLogisticK = 12
   /** Enables normal-based suppression of SDF smooth-union blending. */
   normalDivergenceBlendEnabled = true
+  /** Enables exposure-based suppression of hidden SDF smooth-union surfaces. */
+  exposureBlendEnabled = true
+  /** Strength of the exposure gate. `0` disables it; `1` applies the full gate. */
+  exposureBlendStrength = 1
+  /** Exposure fade band as a multiplier of the container spacing distance. */
+  exposureBlendBandScale = 0.35
+  /** Minimum exposure fade band in CSS pixels. */
+  exposureBlendMinBand = 1
+  /** Angular distance from 90 degrees where the exposure gate reaches zero, in radians. */
+  exposureBlendAngleRange = Math.PI / 2
+  /** Angular distance from 90 degrees where the exposure gate remains at full strength, in radians. */
+  exposureBlendAnglePlateau = Math.PI / 6
+  /** Angular curve used to localize exposure blending around right-angle intersections. */
+  exposureBlendAngleCurve: ExposureBlendAngleCurve = 'plateau'
+  /** Curve used for the exposure fade. */
+  exposureBlendCurve: ExposureBlendCurve = 'smootherstep'
   /** Refractive index used for the displacement model. */
   ior = 1.5
   /** Refractive index used when refracting DOM content rendered inside the glass. */
@@ -739,11 +790,56 @@ export class Container implements Transform {
     if (options.displacementBlur !== undefined) {
       this.displacementBlur = options.displacementBlur
     }
-    if (options.normalDivergenceBlendPower !== undefined) {
-      this.normalDivergenceBlendPower = options.normalDivergenceBlendPower
+    if (options.normalDivergenceBlendMode !== undefined) {
+      this.normalDivergenceBlendMode = options.normalDivergenceBlendMode
+    }
+    if (options.normalDivergenceBlendExponentialLambda !== undefined) {
+      this.normalDivergenceBlendExponentialLambda = options.normalDivergenceBlendExponentialLambda
+    }
+    if (options.normalDivergenceBlendGaussianLambda !== undefined) {
+      this.normalDivergenceBlendGaussianLambda = options.normalDivergenceBlendGaussianLambda
+    }
+    if (options.normalDivergenceBlendRationalSoftness !== undefined) {
+      this.normalDivergenceBlendRationalSoftness = options.normalDivergenceBlendRationalSoftness
+    }
+    if (options.normalDivergenceBlendBetaAlpha !== undefined) {
+      this.normalDivergenceBlendBetaAlpha = options.normalDivergenceBlendBetaAlpha
+    }
+    if (options.normalDivergenceBlendBetaBeta !== undefined) {
+      this.normalDivergenceBlendBetaBeta = options.normalDivergenceBlendBetaBeta
+    }
+    if (options.normalDivergenceBlendLogisticCenter !== undefined) {
+      this.normalDivergenceBlendLogisticCenter = options.normalDivergenceBlendLogisticCenter
+    }
+    if (options.normalDivergenceBlendLogisticK !== undefined) {
+      this.normalDivergenceBlendLogisticK = options.normalDivergenceBlendLogisticK
     }
     if (options.normalDivergenceBlendEnabled !== undefined) {
       this.normalDivergenceBlendEnabled = options.normalDivergenceBlendEnabled
+    }
+    if (options.exposureBlendEnabled !== undefined) {
+      this.exposureBlendEnabled = options.exposureBlendEnabled
+    }
+    if (options.exposureBlendStrength !== undefined) {
+      this.exposureBlendStrength = options.exposureBlendStrength
+    }
+    if (options.exposureBlendBandScale !== undefined) {
+      this.exposureBlendBandScale = options.exposureBlendBandScale
+    }
+    if (options.exposureBlendMinBand !== undefined) {
+      this.exposureBlendMinBand = options.exposureBlendMinBand
+    }
+    if (options.exposureBlendAngleRange !== undefined) {
+      this.exposureBlendAngleRange = options.exposureBlendAngleRange
+    }
+    if (options.exposureBlendAnglePlateau !== undefined) {
+      this.exposureBlendAnglePlateau = options.exposureBlendAnglePlateau
+    }
+    if (options.exposureBlendAngleCurve !== undefined) {
+      this.exposureBlendAngleCurve = options.exposureBlendAngleCurve
+    }
+    if (options.exposureBlendCurve !== undefined) {
+      this.exposureBlendCurve = options.exposureBlendCurve
     }
     if (options.ior !== undefined) {
       this.ior = options.ior

@@ -1,0 +1,407 @@
+:root {
+  font-family: "SF Pro Display", "Segoe UI", sans-serif;
+  color: #ffffff;
+  background: #ffffff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100dvh;
+  overflow: auto;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.blending-app {
+  display: grid;
+  place-items: start center;
+  min-height: 100dvh;
+  padding: 24px;
+  background: #ffffff;
+}
+
+.blending-demo {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: min(100%, 800px);
+}
+
+.blending-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 28px;
+  background: #000000;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 30px 90px rgba(0, 0, 0, 0.36);
+}
+
+.blending-canvas-shell,
+.blending-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.blending-background-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.blending-interaction-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.blending-controls {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 18px;
+  max-width: calc(100% - 28px);
+}
+
+.blending-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.94);
+  font: 600 13px/1 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  box-shadow: 0 0 22px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(18px);
+  cursor: pointer;
+}
+
+.blending-toggle-checkbox {
+  width: 13px;
+  height: 13px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+}
+
+.blending-toggle.active {
+  background: rgba(255, 255, 255, 0.86);
+  border-color: rgba(17, 17, 17, 0.12);
+  color: #111111;
+}
+
+.blending-toggle.active .blending-toggle-checkbox {
+  background: currentColor;
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.86);
+}
+
+.blending-distance-control,
+.blending-mode-control,
+.blending-mix-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.94);
+  font: 600 13px/1 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.42);
+}
+
+.blending-distance-control input,
+.blending-mix-control input {
+  width: 96px;
+  accent-color: #ffffff;
+}
+
+.blending-distance-control output,
+.blending-mix-control output {
+  min-width: 2ch;
+  text-align: left;
+}
+
+.blending-mix-control output {
+  min-width: 4ch;
+}
+
+.blending-mode-control select {
+  min-width: 112px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.blending-mode-control option {
+  color: #111111;
+}
+
+.blending-plot {
+  width: 100%;
+  color: #111111;
+  font: 600 12px/1 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.blending-plot-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.blending-plot-grid line {
+  stroke: rgba(17, 17, 17, 0.12);
+  stroke-width: 1;
+}
+
+.blending-plot-axis {
+  fill: none;
+  stroke: rgba(17, 17, 17, 0.58);
+  stroke-width: 1.4;
+}
+
+.blending-plot-line {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.96;
+  transition: opacity 140ms ease;
+}
+
+.blending-plot-line.dimmed {
+  opacity: 0.14;
+}
+
+.blending-plot-line.half-chord,
+.blending-plot-legend .half-chord::before {
+  stroke: #0077ff;
+  background: #0077ff;
+}
+
+.blending-plot-line.angle,
+.blending-plot-legend .angle::before {
+  stroke: #e1582a;
+  background: #e1582a;
+}
+
+.blending-plot-line.none,
+.blending-plot-legend .none::before {
+  stroke: #646464;
+  background: #646464;
+}
+
+.blending-plot-line.smoothstep,
+.blending-plot-legend .smoothstep::before {
+  stroke: #0f9f6e;
+  background: #0f9f6e;
+}
+
+.blending-plot-line.smootherstep,
+.blending-plot-legend .smootherstep::before {
+  stroke: #d99000;
+  background: #d99000;
+}
+
+.blending-plot-line.exponential,
+.blending-plot-legend .exponential::before {
+  stroke: #8a55ff;
+  background: #8a55ff;
+}
+
+.blending-plot-line.gaussian,
+.blending-plot-legend .gaussian::before {
+  stroke: #c13c8a;
+  background: #c13c8a;
+}
+
+.blending-plot-line.rational,
+.blending-plot-legend .rational::before {
+  stroke: #009ca6;
+  background: #009ca6;
+}
+
+.blending-plot-line.beta-cdf,
+.blending-plot-legend .beta-cdf::before {
+  stroke: #74583f;
+  background: #74583f;
+}
+
+.blending-plot-line.logistic-window,
+.blending-plot-legend .logistic-window::before {
+  stroke: #d12f45;
+  background: #d12f45;
+}
+
+.blending-plot-line.exposure-window,
+.blending-plot-legend .exposure-window::before {
+  stroke: #111111;
+  background: #111111;
+}
+
+.blending-plot-labels {
+  fill: rgba(17, 17, 17, 0.72);
+}
+
+.blending-plot-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding-left: 48px;
+  color: rgba(17, 17, 17, 0.82);
+}
+
+.blending-plot-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+
+.blending-plot-legend span::before {
+  width: 18px;
+  height: 3px;
+  border-radius: 999px;
+  content: "";
+}
+
+.blending-parameter-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 10px 18px;
+  color: rgba(17, 17, 17, 0.82);
+  font: 600 12px/1 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.blending-parameter-control {
+  display: grid;
+  grid-template-columns: minmax(92px, 1fr) 96px 4ch;
+  align-items: center;
+  gap: 10px;
+}
+
+.blending-parameter-control input {
+  width: 96px;
+  accent-color: #111111;
+}
+
+.blending-parameter-control output {
+  text-align: left;
+}
+
+.blending-shape-hitbox {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+  transform-origin: center;
+}
+
+.blending-shape-hitbox:active {
+  cursor: grabbing;
+}
+
+.blending-edge-hit {
+  position: absolute;
+  z-index: 1;
+}
+
+.blending-edge-hit.top,
+.blending-edge-hit.bottom {
+  left: 20px;
+  right: 20px;
+  height: 32px;
+  cursor: ns-resize;
+}
+
+.blending-edge-hit.top {
+  top: 20px;
+  transform: translateY(-50%);
+}
+
+.blending-edge-hit.bottom {
+  bottom: 20px;
+  transform: translateY(50%);
+}
+
+.blending-edge-hit.left,
+.blending-edge-hit.right {
+  top: 20px;
+  bottom: 20px;
+  width: 32px;
+  cursor: ew-resize;
+}
+
+.blending-edge-hit.left {
+  left: 20px;
+  transform: translateX(-50%);
+}
+
+.blending-edge-hit.right {
+  right: 20px;
+  transform: translateX(50%);
+}
+
+.blending-corner-hit {
+  position: absolute;
+  z-index: 2;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cg fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg stroke='%23000' stroke-opacity='.24' stroke-width='4.4' transform='translate(0 1)'%3E%3Cpath d='M10 23V16Q10 10 16 10H23'/%3E%3Cpath d='M10 23L5.8 18.8'/%3E%3Cpath d='M10 23L14.2 18.8'/%3E%3Cpath d='M23 10L18.8 5.8'/%3E%3Cpath d='M23 10L18.8 14.2'/%3E%3C/g%3E%3Cg stroke='%23fff' stroke-width='4.2'%3E%3Cpath d='M10 23V16Q10 10 16 10H23'/%3E%3Cpath d='M10 23L5.8 18.8'/%3E%3Cpath d='M10 23L14.2 18.8'/%3E%3Cpath d='M23 10L18.8 5.8'/%3E%3Cpath d='M23 10L18.8 14.2'/%3E%3C/g%3E%3Cg stroke='%23000' stroke-width='2.2'%3E%3Cpath d='M10 23V16Q10 10 16 10H23'/%3E%3Cpath d='M10 23L5.8 18.8'/%3E%3Cpath d='M10 23L14.2 18.8'/%3E%3Cpath d='M23 10L18.8 5.8'/%3E%3Cpath d='M23 10L18.8 14.2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") 16 16,
+    alias;
+}
+
+.blending-corner-hit.top-left {
+  top: 20px;
+  left: 20px;
+  transform: translate(-50%, -50%);
+}
+
+.blending-corner-hit.top-right {
+  top: 20px;
+  right: 20px;
+  transform: translate(50%, -50%);
+}
+
+.blending-corner-hit.bottom-right {
+  right: 20px;
+  bottom: 20px;
+  transform: translate(50%, 50%);
+}
+
+.blending-corner-hit.bottom-left {
+  bottom: 20px;
+  left: 20px;
+  transform: translate(-50%, 50%);
+}

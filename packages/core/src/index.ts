@@ -8,4 +8,14 @@ export type {
   WebGpuGlassCoreInit,
   WebGpuGlassCoreRenderOptions,
 } from './renderer'
-export type { BackdropMetrics, Point, RgbaColor, SpecularWidth, SurfaceProfile, Transform } from './types'
+export type {
+  BackdropMetrics,
+  ExposureBlendAngleCurve,
+  ExposureBlendCurve,
+  NormalDivergenceBlendMode,
+  Point,
+  RgbaColor,
+  SpecularWidth,
+  SurfaceProfile,
+  Transform,
+} from './types'

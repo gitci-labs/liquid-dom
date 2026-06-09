@@ -5,6 +5,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "changeset": "changeset",
+    "dev:blending": "pnpm --parallel --filter @liquid-dom/core --filter @liquid-dom/react --filter blending dev",
     "dev": "pnpm --parallel --filter @liquid-dom/core --filter editor dev",
     "dev:minimal": "pnpm --parallel --filter @liquid-dom/core --filter @liquid-dom/react --filter minimal dev",
     "dev:three": "pnpm --parallel --filter @liquid-dom/core --filter @liquid-dom/three --filter three-integration dev",

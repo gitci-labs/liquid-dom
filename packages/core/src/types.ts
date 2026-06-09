@@ -80,3 +80,32 @@ export interface Transform {
  * Surface profile used for the beveled glass edge.
  */
 export type SurfaceProfile = 'convex' | 'concave' | 'lip'
+
+/**
+ * Normal-divergence metric used to scale SDF smooth-union blending.
+ */
+export type NormalDivergenceBlendMode =
+  | 'half-chord'
+  | 'angle'
+  | 'none'
+  | 'smoothstep'
+  | 'smootherstep'
+  | 'exponential'
+  | 'gaussian'
+  | 'rational'
+  | 'beta-cdf'
+  | 'logistic-window'
+
+/**
+ * Curve used for exposure-based suppression of hidden SDF smooth-union surfaces.
+ */
+export type ExposureBlendCurve =
+  | 'smoothstep'
+  | 'smootherstep'
+  | 'smoothstep-in'
+  | 'smoothstep-out'
+
+/**
+ * Angular window curve used to localize exposure blending around intersecting corners.
+ */
+export type ExposureBlendAngleCurve = 'none' | 'triangle' | 'plateau' | 'sine' | 'cosine-peak'
