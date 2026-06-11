@@ -48,8 +48,6 @@ import type {
   ZStackOptions,
 } from '@liquid-dom/layout'
 import type {
-  ExposureBlendAngleCurve,
-  ExposureBlendCurve,
   NormalDivergenceBlendMode,
   Point,
   RgbaColor,
@@ -990,76 +988,6 @@ export class GlassContainer extends SingleChildUiNode<LayoutNode, SceneContainer
     }
   }
 
-  get normalDivergenceBlendExponentialLambda(): number {
-    return this.sceneNode.normalDivergenceBlendExponentialLambda
-  }
-
-  set normalDivergenceBlendExponentialLambda(value: number) {
-    if (setProperty(this.sceneNode, 'normalDivergenceBlendExponentialLambda', value)) {
-      this.invalidateFrame('normalDivergenceBlendExponentialLambda')
-    }
-  }
-
-  get normalDivergenceBlendGaussianLambda(): number {
-    return this.sceneNode.normalDivergenceBlendGaussianLambda
-  }
-
-  set normalDivergenceBlendGaussianLambda(value: number) {
-    if (setProperty(this.sceneNode, 'normalDivergenceBlendGaussianLambda', value)) {
-      this.invalidateFrame('normalDivergenceBlendGaussianLambda')
-    }
-  }
-
-  get normalDivergenceBlendRationalSoftness(): number {
-    return this.sceneNode.normalDivergenceBlendRationalSoftness
-  }
-
-  set normalDivergenceBlendRationalSoftness(value: number) {
-    if (setProperty(this.sceneNode, 'normalDivergenceBlendRationalSoftness', value)) {
-      this.invalidateFrame('normalDivergenceBlendRationalSoftness')
-    }
-  }
-
-  get normalDivergenceBlendBetaAlpha(): number {
-    return this.sceneNode.normalDivergenceBlendBetaAlpha
-  }
-
-  set normalDivergenceBlendBetaAlpha(value: number) {
-    if (setProperty(this.sceneNode, 'normalDivergenceBlendBetaAlpha', value)) {
-      this.invalidateFrame('normalDivergenceBlendBetaAlpha')
-    }
-  }
-
-  get normalDivergenceBlendBetaBeta(): number {
-    return this.sceneNode.normalDivergenceBlendBetaBeta
-  }
-
-  set normalDivergenceBlendBetaBeta(value: number) {
-    if (setProperty(this.sceneNode, 'normalDivergenceBlendBetaBeta', value)) {
-      this.invalidateFrame('normalDivergenceBlendBetaBeta')
-    }
-  }
-
-  get normalDivergenceBlendLogisticCenter(): number {
-    return this.sceneNode.normalDivergenceBlendLogisticCenter
-  }
-
-  set normalDivergenceBlendLogisticCenter(value: number) {
-    if (setProperty(this.sceneNode, 'normalDivergenceBlendLogisticCenter', value)) {
-      this.invalidateFrame('normalDivergenceBlendLogisticCenter')
-    }
-  }
-
-  get normalDivergenceBlendLogisticK(): number {
-    return this.sceneNode.normalDivergenceBlendLogisticK
-  }
-
-  set normalDivergenceBlendLogisticK(value: number) {
-    if (setProperty(this.sceneNode, 'normalDivergenceBlendLogisticK', value)) {
-      this.invalidateFrame('normalDivergenceBlendLogisticK')
-    }
-  }
-
   get normalDivergenceBlendEnabled(): boolean {
     return this.sceneNode.normalDivergenceBlendEnabled
   }
@@ -1070,83 +998,53 @@ export class GlassContainer extends SingleChildUiNode<LayoutNode, SceneContainer
     }
   }
 
-  get exposureBlendEnabled(): boolean {
-    return this.sceneNode.exposureBlendEnabled
+  get exposureBlendSubmergedAreaModulationEnabled(): boolean {
+    return this.sceneNode.exposureBlendSubmergedAreaModulationEnabled
   }
 
-  set exposureBlendEnabled(value: boolean) {
-    if (setProperty(this.sceneNode, 'exposureBlendEnabled', value)) {
-      this.invalidateFrame('exposureBlendEnabled')
+  set exposureBlendSubmergedAreaModulationEnabled(value: boolean) {
+    if (setProperty(this.sceneNode, 'exposureBlendSubmergedAreaModulationEnabled', value)) {
+      this.invalidateFrame('exposureBlendSubmergedAreaModulationEnabled')
     }
   }
 
-  get exposureBlendStrength(): number {
-    return this.sceneNode.exposureBlendStrength
+  get exposureBlendSubmergedAreaMinStrength(): number {
+    return this.sceneNode.exposureBlendSubmergedAreaMinStrength
   }
 
-  set exposureBlendStrength(value: number) {
-    if (setProperty(this.sceneNode, 'exposureBlendStrength', value)) {
-      this.invalidateFrame('exposureBlendStrength')
+  set exposureBlendSubmergedAreaMinStrength(value: number) {
+    if (setProperty(this.sceneNode, 'exposureBlendSubmergedAreaMinStrength', value)) {
+      this.invalidateFrame('exposureBlendSubmergedAreaMinStrength')
     }
   }
 
-  get exposureBlendBandScale(): number {
-    return this.sceneNode.exposureBlendBandScale
+  get exposureBlendSubmergedAreaPeriod(): number {
+    return this.sceneNode.exposureBlendSubmergedAreaPeriod
   }
 
-  set exposureBlendBandScale(value: number) {
-    if (setProperty(this.sceneNode, 'exposureBlendBandScale', value)) {
-      this.invalidateFrame('exposureBlendBandScale')
+  set exposureBlendSubmergedAreaPeriod(value: number) {
+    if (setProperty(this.sceneNode, 'exposureBlendSubmergedAreaPeriod', value)) {
+      this.invalidateFrame('exposureBlendSubmergedAreaPeriod')
     }
   }
 
-  get exposureBlendMinBand(): number {
-    return this.sceneNode.exposureBlendMinBand
+  get exposureBlendSubmergedAreaSharpness(): number {
+    return this.sceneNode.exposureBlendSubmergedAreaSharpness
   }
 
-  set exposureBlendMinBand(value: number) {
-    if (setProperty(this.sceneNode, 'exposureBlendMinBand', value)) {
-      this.invalidateFrame('exposureBlendMinBand')
+  set exposureBlendSubmergedAreaSharpness(value: number) {
+    if (setProperty(this.sceneNode, 'exposureBlendSubmergedAreaSharpness', value)) {
+      this.invalidateFrame('exposureBlendSubmergedAreaSharpness')
     }
   }
 
-  get exposureBlendAngleRange(): number {
-    return this.sceneNode.exposureBlendAngleRange
+  get exposureBlendSubmergedAreaDelay(): number {
+    return this.sceneNode.exposureBlendSubmergedAreaDelay
   }
 
-  set exposureBlendAngleRange(value: number) {
-    if (setProperty(this.sceneNode, 'exposureBlendAngleRange', value)) {
-      this.invalidateFrame('exposureBlendAngleRange')
-    }
-  }
-
-  get exposureBlendAnglePlateau(): number {
-    return this.sceneNode.exposureBlendAnglePlateau
-  }
-
-  set exposureBlendAnglePlateau(value: number) {
-    if (setProperty(this.sceneNode, 'exposureBlendAnglePlateau', value)) {
-      this.invalidateFrame('exposureBlendAnglePlateau')
-    }
-  }
-
-  get exposureBlendAngleCurve(): ExposureBlendAngleCurve {
-    return this.sceneNode.exposureBlendAngleCurve
-  }
-
-  set exposureBlendAngleCurve(value: ExposureBlendAngleCurve) {
-    if (setProperty(this.sceneNode, 'exposureBlendAngleCurve', value)) {
-      this.invalidateFrame('exposureBlendAngleCurve')
-    }
-  }
-
-  get exposureBlendCurve(): ExposureBlendCurve {
-    return this.sceneNode.exposureBlendCurve
-  }
-
-  set exposureBlendCurve(value: ExposureBlendCurve) {
-    if (setProperty(this.sceneNode, 'exposureBlendCurve', value)) {
-      this.invalidateFrame('exposureBlendCurve')
+  set exposureBlendSubmergedAreaDelay(value: number) {
+    if (setProperty(this.sceneNode, 'exposureBlendSubmergedAreaDelay', value)) {
+      this.invalidateFrame('exposureBlendSubmergedAreaDelay')
     }
   }
 

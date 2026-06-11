@@ -10,8 +10,6 @@ export type {
 } from './renderer'
 export type {
   BackdropMetrics,
-  ExposureBlendAngleCurve,
-  ExposureBlendCurve,
   NormalDivergenceBlendMode,
   Point,
   RgbaColor,

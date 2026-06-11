@@ -151,22 +151,20 @@ struct VertexOutput {
   @location(0) uv: vec2f,
 };
 
-// Smooth union uses the classic polynomial smooth-min only after two gates.
+// Smooth union uses the classic polynomial smooth-min only after a normal gate.
 // Nearly aligned normals are treated as duplicate or nested boundaries and fall
 // back toward a hard union; diverging normals get the full blend radius so real
-// corners can form a rounded transition. The exposure gate rejects projected
-// surfaces that are buried inside the other side of the hard union.
+// corners can form a rounded transition. A per-shape submerged-area estimate can
+// further scale that blend radius when one shape is mostly inside another
+// shape's blend influence.
 // globals.sdf.x selects the normal-divergence metric. Mode 0 uses half-chord,
-// mode 1 uses normalized angle, mode 2 disables gating, modes 3-4 use
-// smooth polynomial ramps, and later modes use parameterized curves from
-// globals.sdfParams*.
+// mode 1 uses normalized angle.
 // globals.sdf.y toggles that normal gate; when disabled, every pair receives
 // the full configured smoothing distance.
 const SDF_EPSILON: f32 = 0.0001;
 const SDF_GRADIENT_STEP_PX: f32 = 1.0;
-const SDF_PI: f32 = 3.141592653589793;
+const SDF_TAU: f32 = 6.283185307179586;
 const SDF_NORMAL_ANGLE_INV_PI: f32 = 0.3183098861837907;
-const SDF_BETA_CDF_STEPS: u32 = 16u;
 const DEBUG_DISPLACEMENT_ENCODE_SCALE: f32 = 0.01;
 // Smooth blending can flatten the fused SDF so one distance unit covers
 // more than one screen pixel. Specular is a screen-space rim effect, so it
@@ -184,6 +182,7 @@ const CORNER_SMOOTHING_EXPONENT_DELTA: f32 = ${CORNER_SMOOTHING_EXPONENT_DELTA.t
 struct SdfSample {
   distance: f32,
   gradient: vec2f,
+  submergedArea: f32,
 };
 
 fn normalizeSdfGradient(gradient: vec2f) -> vec2f {
@@ -199,77 +198,6 @@ fn hardUnion(left: SdfSample, right: SdfSample) -> SdfSample {
     return left;
   }
   return right;
-}
-
-fn normalizedExponentialGate(value: f32, lambdaInput: f32) -> f32 {
-  let lambda = max(lambdaInput, SDF_EPSILON);
-  return (1.0 - exp(-lambda * value)) / (1.0 - exp(-lambda));
-}
-
-fn normalizedGaussianGate(value: f32, lambdaInput: f32) -> f32 {
-  let lambda = max(lambdaInput, SDF_EPSILON);
-  return (1.0 - exp(-lambda * value * value)) / (1.0 - exp(-lambda));
-}
-
-fn rationalGate(value: f32, softnessInput: f32) -> f32 {
-  let softness = clamp(softnessInput, 0.0, 1.0);
-  let denominator = value + softness * (1.0 - value);
-  if (denominator <= SDF_EPSILON) {
-    return 0.0;
-  }
-  return value / denominator;
-}
-
-fn betaPdf(value: f32, alphaInput: f32, betaInput: f32) -> f32 {
-  let alpha = max(alphaInput, 0.05);
-  let beta = max(betaInput, 0.05);
-  let x = clamp(value, SDF_EPSILON, 1.0 - SDF_EPSILON);
-  return pow(x, alpha - 1.0) * pow(1.0 - x, beta - 1.0);
-}
-
-fn integrateBetaPdf(upper: f32, alpha: f32, beta: f32) -> f32 {
-  let clampedUpper = clamp(upper, 0.0, 1.0);
-  let step = clampedUpper / f32(SDF_BETA_CDF_STEPS);
-  var sum = betaPdf(0.0, alpha, beta) + betaPdf(clampedUpper, alpha, beta);
-  for (var i = 1u; i < SDF_BETA_CDF_STEPS; i = i + 1u) {
-    let weight = select(2.0, 4.0, (i % 2u) == 1u);
-    sum = sum + weight * betaPdf(step * f32(i), alpha, beta);
-  }
-  return sum * step / 3.0;
-}
-
-fn betaCdfGate(value: f32, alphaInput: f32, betaInput: f32) -> f32 {
-  let upper = clamp(value, 0.0, 1.0);
-  if (upper <= SDF_EPSILON) {
-    return 0.0;
-  }
-  if (upper >= 1.0 - SDF_EPSILON) {
-    return 1.0;
-  }
-
-  let alpha = max(alphaInput, 0.05);
-  let beta = max(betaInput, 0.05);
-  let numerator = integrateBetaPdf(upper, alpha, beta);
-  let denominator = max(integrateBetaPdf(1.0, alpha, beta), SDF_EPSILON);
-  return clamp(numerator / denominator, 0.0, 1.0);
-}
-
-fn logisticWindowGate(value: f32, centerInput: f32, steepnessInput: f32) -> f32 {
-  let center = clamp(centerInput, 0.0, 1.0);
-  let steepness = max(steepnessInput, SDF_EPSILON);
-  let start = 1.0 / (1.0 + exp(-steepness * (0.0 - center)));
-  let end = 1.0 / (1.0 + exp(-steepness * (1.0 - center)));
-  let denominator = end - start;
-  if (abs(denominator) <= SDF_EPSILON) {
-    return value;
-  }
-  let sigmoid = 1.0 / (1.0 + exp(-steepness * (value - center)));
-  return clamp((sigmoid - start) / denominator, 0.0, 1.0);
-}
-
-fn smootherstepGate(value: f32) -> f32 {
-  let x = clamp(value, 0.0, 1.0);
-  return x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
 }
 
 fn shapeLocalPos(shape: ShapeData, pos: vec2f) -> vec2f {
@@ -328,73 +256,53 @@ fn shapeSdfSample(shape: ShapeData, pos: vec2f) -> SdfSample {
   return SdfSample(
     shapeDistance(shape, pos),
     shapeGradient(shape, pos),
+    shape.contentRange.z,
   );
 }
 
-fn hardUnionDistanceBeforeShape(pos: vec2f, endIndex: u32) -> f32 {
-  var distance = 1e5;
-  for (var i = 0u; i < endIndex; i = i + 1u) {
-    distance = min(distance, shapeDistance(shapes[i], pos));
-  }
-  return distance;
-}
-
-fn surfaceExposure(
-  distanceToOtherShape: f32,
-  exposureBand: f32,
-  exposureMode: f32,
-) -> f32 {
-  // Fade both buried surfaces and surfaces close to the other boundary. Using a
-  // symmetric band makes the exposed control visible in near-intersection cases
-  // where the projected surface is not deeply inside.
-  let x = clamp((distanceToOtherShape + exposureBand) / (exposureBand * 2.0), 0.0, 1.0);
-  if (exposureMode > 3.5) {
-    let halfX = 0.5 + x * 0.5;
-    return 2.0 * (halfX * halfX * (3.0 - 2.0 * halfX) - 0.5);
-  }
-  if (exposureMode > 2.5) {
-    let halfX = x * 0.5;
-    return 2.0 * halfX * halfX * (3.0 - 2.0 * halfX);
-  }
-  if (exposureMode > 1.5) {
-    return x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
-  }
-  return x * x * (3.0 - 2.0 * x);
-}
-
-fn smoothUnion(
-  left: SdfSample,
-  right: SdfSample,
-  smoothing: f32,
-  exposure: f32,
-) -> SdfSample {
+fn normalDivergenceForSamples(left: SdfSample, right: SdfSample) -> f32 {
   let normalAlignment = clamp(dot(left.gradient, right.gradient), -1.0, 1.0);
   var normalDivergence = 1.0;
   if (globals.sdf.y > 0.5) {
     let normalizedAngle = acos(normalAlignment) * SDF_NORMAL_ANGLE_INV_PI;
     if (globals.sdf.x < 0.5) {
       normalDivergence = length(left.gradient - right.gradient) * 0.5;
-    } else if (globals.sdf.x < 1.5) {
+    } else {
       normalDivergence = normalizedAngle;
-    } else if (globals.sdf.x > 2.5) {
-      if (globals.sdf.x < 3.5) {
-        normalDivergence = smoothstep(0.0, 1.0, normalizedAngle);
-      } else if (globals.sdf.x < 4.5) {
-        normalDivergence = smootherstepGate(normalizedAngle);
-      } else if (globals.sdf.x < 5.5) {
-        normalDivergence = normalizedExponentialGate(normalizedAngle, globals.sdfParams0.x);
-      } else if (globals.sdf.x < 6.5) {
-        normalDivergence = normalizedGaussianGate(normalizedAngle, globals.sdfParams0.y);
-      } else if (globals.sdf.x < 7.5) {
-        normalDivergence = rationalGate(normalizedAngle, globals.sdfParams0.z);
-      } else if (globals.sdf.x < 8.5) {
-        normalDivergence = betaCdfGate(normalizedAngle, globals.sdfParams2.x, globals.sdfParams2.y);
-      } else {
-        normalDivergence = logisticWindowGate(normalizedAngle, globals.sdfParams1.x, globals.sdfParams1.y);
-      }
     }
   }
-  let blendDistance = smoothing * normalDivergence * clamp(exposure, 0.0, 1.0);
+  return normalDivergence;
+}
+
+fn shapedCosine01(value: f32, sharpnessInput: f32) -> f32 {
+  let sharpness = max(sharpnessInput, SDF_EPSILON);
+  let wave = cos(value * SDF_TAU);
+  let shapedWave = sign(wave) * pow(abs(wave), sharpness);
+  return 0.5 + 0.5 * shapedWave;
+}
+
+fn submergedAreaKScale(left: SdfSample, right: SdfSample) -> f32 {
+  if (globals.sdfParams0.x <= 0.5) {
+    return 1.0;
+  }
+
+  let lowK = clamp(globals.sdfParams0.y, 0.0, 1.0);
+  let period = max(globals.sdfParams0.z, SDF_EPSILON);
+  let delay = clamp(globals.sdfParams1.x, 0.0, 0.999);
+  let submergedArea = max(left.submergedArea, right.submergedArea);
+  let delayedArea = max(submergedArea - delay, 0.0) / max(1.0 - delay, SDF_EPSILON);
+  let curve = shapedCosine01(delayedArea / period, globals.sdfParams0.w);
+  return mix(lowK, 1.0, curve);
+}
+
+fn smoothUnion(
+  left: SdfSample,
+  right: SdfSample,
+  smoothing: f32,
+  normalDivergence: f32,
+) -> SdfSample {
+  let kScale = submergedAreaKScale(left, right);
+  let blendDistance = smoothing * normalDivergence * kScale;
 
   if (blendDistance <= SDF_EPSILON) {
     return hardUnion(left, right);
@@ -404,11 +312,12 @@ fn smoothUnion(
   return SdfSample(
     mix(right.distance, left.distance, h) - blendDistance * h * (1.0 - h),
     normalizeSdfGradient(mix(right.gradient, left.gradient, h)),
+    max(left.submergedArea, right.submergedArea),
   );
 }
 
 fn sceneSdfSample(pos: vec2f, shapeCount: u32, smoothing: f32) -> SdfSample {
-  var result = SdfSample(1e5, vec2f(0.0, -1.0));
+  var result = SdfSample(1e5, vec2f(0.0, -1.0), 0.0);
   var found = false;
 
   for (var i = 0u; i < shapeCount; i = i + 1u) {
@@ -417,50 +326,8 @@ fn sceneSdfSample(pos: vec2f, shapeCount: u32, smoothing: f32) -> SdfSample {
       result = nextSample;
       found = true;
     } else {
-      let exposureBand = max(
-        max(
-          smoothing * max(globals.sdfParams3.y, 0.0),
-          max(globals.sdfParams3.z, 0.0),
-        ),
-        SDF_EPSILON,
-      );
-      let resultSurfacePos = pos - result.distance * result.gradient;
-      let nextSurfacePos = pos - nextSample.distance * nextSample.gradient;
-      let resultSurfaceExposure = surfaceExposure(
-        shapeDistance(shapes[i], resultSurfacePos),
-        exposureBand,
-        globals.sdfParams3.w,
-      );
-      let nextSurfaceExposure = surfaceExposure(
-        hardUnionDistanceBeforeShape(nextSurfacePos, i),
-        exposureBand,
-        globals.sdfParams3.w,
-      );
-      let rawExposure = resultSurfaceExposure * nextSurfaceExposure;
-      let exposureStrength = clamp(globals.sdfParams3.x, 0.0, 1.0);
-      let exposureNormalAlignment = clamp(dot(result.gradient, nextSample.gradient), -1.0, 1.0);
-      let exposureNormalizedAngle = acos(exposureNormalAlignment) * SDF_NORMAL_ANGLE_INV_PI;
-      let exposureAngleRange = clamp(globals.sdfParams4.x * SDF_NORMAL_ANGLE_INV_PI, SDF_EPSILON, 0.5);
-      let exposureAnglePlateau = min(clamp(globals.sdfParams4.y * SDF_NORMAL_ANGLE_INV_PI, 0.0, 0.5), exposureAngleRange);
-      let exposureAngleDistance = abs(exposureNormalizedAngle - 0.5);
-      let exposureRampProgress = (exposureAngleDistance - exposureAnglePlateau) / max(exposureAngleRange - exposureAnglePlateau, SDF_EPSILON);
-      let exposurePlateauWeight = 1.0 - smootherstepGate(exposureRampProgress);
-      let exposureTriangleWeight = 1.0 - abs(exposureNormalizedAngle * 2.0 - 1.0);
-      let exposureSineWeight = sin(exposureNormalizedAngle * SDF_PI);
-      let exposureCosinePeakWeight = 1.0 - abs(cos(exposureNormalizedAngle * SDF_PI));
-      var exposureCornerWeight = 1.0;
-      if (globals.sdfParams4.z > 3.5) {
-        exposureCornerWeight = exposureCosinePeakWeight;
-      } else if (globals.sdfParams4.z > 2.5) {
-        exposureCornerWeight = exposureSineWeight;
-      } else if (globals.sdfParams4.z > 1.5) {
-        exposureCornerWeight = exposurePlateauWeight;
-      } else if (globals.sdfParams4.z > 0.5) {
-        exposureCornerWeight = exposureTriangleWeight;
-      }
-      let cornerExposureStrength = exposureStrength * exposureCornerWeight;
-      let gatedExposure = select(1.0, mix(1.0, rawExposure, cornerExposureStrength), globals.sdfParams3.w > 0.5);
-      result = smoothUnion(result, nextSample, smoothing, gatedExposure);
+      let centerNormalDivergence = normalDivergenceForSamples(result, nextSample);
+      result = smoothUnion(result, nextSample, smoothing, centerNormalDivergence);
     }
   }
 

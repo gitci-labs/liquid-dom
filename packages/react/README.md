@@ -119,7 +119,7 @@ import { Glass, GlassContainer, Html } from '@liquid-dom/react'
 
 | Group | Props |
 | --- | --- |
-| Shape and fusion | `spacing`, `normalDivergenceBlendPower`, `normalDivergenceBlendEnabled` |
+| Shape and fusion | `spacing`, `normalDivergenceBlendMode`, `normalDivergenceBlendEnabled`, `exposureBlendSubmergedAreaModulationEnabled`, `exposureBlendSubmergedAreaMinStrength`, `exposureBlendSubmergedAreaPeriod`, `exposureBlendSubmergedAreaSharpness`, `exposureBlendSubmergedAreaDelay` |
 | Blur and displacement | `blur`, `bezelWidth`, `displacementFactor`, `displacementBlur`, `debugDisplacement` |
 | Refraction | `thickness`, `ior`, `contentIor`, `contentDepth`, `dispersion`, `surfaceProfile` |
 | Specular and reflection | `lightDirection`, `specularStrength`, `specularWidth`, `specularFalloff`, `oppositeSpecularStrength`, `specularSharpness`, `specularOpacity`, `reflectionOffset` |

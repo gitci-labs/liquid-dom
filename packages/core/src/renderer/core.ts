@@ -65,12 +65,11 @@ import {
   TEXTURE_BLIT_SHADER,
 } from '../shaders'
 import type {
-  ExposureBlendAngleCurve,
-  ExposureBlendCurve,
   NormalDivergenceBlendMode,
   SpecularWidth,
   SurfaceProfile,
 } from '../types'
+import { resolveCornerSmoothingExponent } from '../corner-smoothing'
 
 /** Resolves public specular-width semantics into the shader's device-pixel space. */
 export function resolveSpecularWidthPx(specularWidth: SpecularWidth, dpr: number) {
@@ -100,12 +99,29 @@ type PackedShapesResult = {
   bounds: BoundsRect | null
 }
 
+type PackedShapeCpuData = {
+  contentRange?: {
+    count: number
+    start: number
+  }
+  cornerRadius: number
+  cornerSmoothing: number
+  halfHeight: number
+  halfWidth: number
+  inverse: Matrix2D
+  minimumScale: number
+  worldDevice: Matrix2D
+}
+
 type GlobalsBuffer = GpuStructBuffer<GpuStructDefinition<typeof GlobalsLayout>>
 type ShapeDataBuffer = GpuStructArrayBuffer<GpuStructDefinition<typeof ShapeDataLayout>>
 type BackdropMetricsBoundsBuffer = GpuStructBuffer<GpuStructDefinition<typeof BackdropMetricsBoundsLayout>>
 type HtmlCompositeParamsBuffer = GpuStructBuffer<GpuStructDefinition<typeof HtmlCompositeParamsLayout>>
 const DISPLACEMENT_FIELD_FORMAT = 'rgba16float' satisfies GPUTextureFormat
 const SHADOW_MASK_FORMAT = 'rgba8unorm' satisfies GPUTextureFormat
+const SUBMERGED_AREA_SAMPLE_STEPS = 24
+const SUBMERGED_AREA_AA_PX = 1
+const SDF_EPSILON = 0.0001
 
 /** Maps a public surface profile string to the shader enum value. */
 function getSurfaceProfileIndex(profile: SurfaceProfile) {
@@ -123,66 +139,95 @@ function getNormalDivergenceBlendModeIndex(mode: NormalDivergenceBlendMode) {
   if (mode === 'angle') {
     return 1
   }
-  if (mode === 'none') {
-    return 2
-  }
-  if (mode === 'smoothstep') {
-    return 3
-  }
-  if (mode === 'smootherstep') {
-    return 4
-  }
-  if (mode === 'exponential') {
-    return 5
-  }
-  if (mode === 'gaussian') {
-    return 6
-  }
-  if (mode === 'rational') {
-    return 7
-  }
-  if (mode === 'beta-cdf') {
-    return 8
-  }
-  if (mode === 'logistic-window') {
-    return 9
-  }
   return 0
 }
 
-/** Maps exposure blend settings to the shader enum value. Zero disables exposure blending. */
-function getExposureBlendModeIndex(enabled: boolean, curve: ExposureBlendCurve) {
-  if (!enabled) {
-    return 0
-  }
-
-  if (curve === 'smootherstep') {
-    return 2
-  }
-  if (curve === 'smoothstep-in') {
-    return 3
-  }
-  if (curve === 'smoothstep-out') {
-    return 4
-  }
-  return 1
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
 }
 
-/** Maps the exposure angle window curve to the shader enum value. */
-function getExposureBlendAngleCurveIndex(curve: ExposureBlendAngleCurve) {
-  if (curve === 'triangle') {
-    return 1
+function smoothstep(edge0: number, edge1: number, value: number) {
+  if (edge0 === edge1) {
+    return value < edge0 ? 0 : 1
   }
-  if (curve === 'plateau') {
-    return 2
+
+  const x = clamp((value - edge0) / (edge1 - edge0), 0, 1)
+  return x * x * (3 - 2 * x)
+}
+
+function sdfCoverage(distancePx: number) {
+  return 1 - smoothstep(-SUBMERGED_AREA_AA_PX, SUBMERGED_AREA_AA_PX, distancePx)
+}
+
+function blendInfluenceCoverage(distancePx: number, blendDistancePx: number) {
+  if (blendDistancePx <= SDF_EPSILON) {
+    return sdfCoverage(distancePx)
   }
-  if (curve === 'sine') {
-    return 3
+
+  return 1 - smoothstep(-SUBMERGED_AREA_AA_PX, blendDistancePx, distancePx)
+}
+
+function superellipseLength(x: number, y: number, exponent: number) {
+  return (Math.abs(x) ** exponent + Math.abs(y) ** exponent) ** (1 / exponent)
+}
+
+function shapeLocalDistance(shape: PackedShapeCpuData, localX: number, localY: number) {
+  const cornerLimit = Math.min(shape.halfWidth, shape.halfHeight)
+  const clampedRadius = clamp(shape.cornerRadius, 0, cornerLimit)
+  const centeredX = localX - shape.halfWidth
+  const centeredY = localY - shape.halfHeight
+  const qx = Math.abs(centeredX) - shape.halfWidth + clampedRadius
+  const qy = Math.abs(centeredY) - shape.halfHeight + clampedRadius
+  const maxSmoothingThatFits = shape.cornerRadius > SDF_EPSILON
+    ? Math.max(cornerLimit / Math.max(shape.cornerRadius, SDF_EPSILON) - 1, 0)
+    : 0
+  const effectiveSmoothing = Math.min(clamp(shape.cornerSmoothing, 0, 1), maxSmoothingThatFits)
+  const exponent = resolveCornerSmoothingExponent(effectiveSmoothing)
+  const cornerDistance = superellipseLength(Math.max(qx, 0), Math.max(qy, 0), exponent)
+  return (cornerDistance + Math.min(Math.max(qx, qy), 0) - clampedRadius) * shape.minimumScale
+}
+
+function shapeDistanceAtDevicePoint(shape: PackedShapeCpuData, point: { x: number, y: number }) {
+  const local = transformPoint(shape.inverse, point.x, point.y)
+  return shapeLocalDistance(shape, local.x, local.y)
+}
+
+function estimateSubmergedAreaPercentages(shapes: PackedShapeCpuData[], blendDistancePx: number) {
+  if (shapes.length === 0) {
+    return []
   }
-  if (curve === 'cosine-peak') {
-    return 4
-  }
-  return 0
+
+  return shapes.map((shape, shapeIndex) => {
+    let shapeCoverageSum = 0
+    let blendInfluenceCoverageSum = 0
+
+    for (let yIndex = 0; yIndex < SUBMERGED_AREA_SAMPLE_STEPS; yIndex += 1) {
+      const localY = ((yIndex + 0.5) / SUBMERGED_AREA_SAMPLE_STEPS) * shape.halfHeight * 2
+      for (let xIndex = 0; xIndex < SUBMERGED_AREA_SAMPLE_STEPS; xIndex += 1) {
+        const localX = ((xIndex + 0.5) / SUBMERGED_AREA_SAMPLE_STEPS) * shape.halfWidth * 2
+        const shapeCoverage = sdfCoverage(shapeLocalDistance(shape, localX, localY))
+        if (shapeCoverage <= 0) {
+          continue
+        }
+
+        const devicePoint = transformPoint(shape.worldDevice, localX, localY)
+        const distanceToOtherShape = shapes.reduce((distance, otherShape, otherIndex) => {
+          if (otherIndex === shapeIndex) {
+            return distance
+          }
+          return Math.min(distance, shapeDistanceAtDevicePoint(otherShape, devicePoint))
+        }, Number.POSITIVE_INFINITY)
+
+        shapeCoverageSum += shapeCoverage
+        blendInfluenceCoverageSum += shapeCoverage * blendInfluenceCoverage(distanceToOtherShape, blendDistancePx)
+      }
+    }
+
+    if (shapeCoverageSum <= SDF_EPSILON) {
+      return 0
+    }
+    return clamp(blendInfluenceCoverageSum / shapeCoverageSum, 0, 1)
+  })
 }
 
 /** Texture-in/texture-out WebGPU compositor for a liquid-glass scene graph. */
@@ -472,28 +517,13 @@ export class WebGpuGlassCore {
         normalDivergenceBlendEnabled: container.normalDivergenceBlendEnabled ? 1 : 0,
       },
       sdfParams0: {
-        exponentialLambda: container.normalDivergenceBlendExponentialLambda,
-        gaussianLambda: container.normalDivergenceBlendGaussianLambda,
-        rationalSoftness: container.normalDivergenceBlendRationalSoftness,
+        submergedAreaModulationEnabled: container.exposureBlendSubmergedAreaModulationEnabled ? 1 : 0,
+        submergedAreaMinStrength: container.exposureBlendSubmergedAreaMinStrength,
+        submergedAreaPeriod: container.exposureBlendSubmergedAreaPeriod,
+        submergedAreaSharpness: container.exposureBlendSubmergedAreaSharpness,
       },
       sdfParams1: {
-        logisticCenter: container.normalDivergenceBlendLogisticCenter,
-        logisticK: container.normalDivergenceBlendLogisticK,
-      },
-      sdfParams2: {
-        betaAlpha: container.normalDivergenceBlendBetaAlpha,
-        betaBeta: container.normalDivergenceBlendBetaBeta,
-      },
-      sdfParams3: {
-        exposureStrength: container.exposureBlendStrength,
-        exposureBandScale: container.exposureBlendBandScale,
-        exposureMinBand: container.exposureBlendMinBand * dpr,
-        exposureMode: getExposureBlendModeIndex(container.exposureBlendEnabled, container.exposureBlendCurve),
-      },
-      sdfParams4: {
-        exposureAngleRange: container.exposureBlendAngleRange,
-        exposureAnglePlateau: container.exposureBlendAnglePlateau,
-        exposureAngleMode: getExposureBlendAngleCurveIndex(container.exposureBlendAngleCurve),
+        submergedAreaDelay: container.exposureBlendSubmergedAreaDelay,
       },
       glass: {
         thickness: container.thickness * dpr,
@@ -565,6 +595,7 @@ export class WebGpuGlassCore {
 
     this.ensureShapesBuffer(glassLayers.length)
     const shapesBuffer = this.shapesBuffer
+    const packedShapes: PackedShapeCpuData[] = []
 
     for (const glassLayer of glassLayers) {
       const glass = glassLayer.glass
@@ -591,32 +622,50 @@ export class WebGpuGlassCore {
       const contentRange = this.contentSource?.getGlassContentRange?.(glass)
       const halfWidth = glass.width * 0.5
       const halfHeight = glass.height * 0.5
-      shapesBuffer?.writeAt(activeCount, {
-        inverse0: {
-          a: inverse.a,
-          c: inverse.c,
-          e: inverse.e,
-          minimumScale: getMinimumScale(worldDevice),
-        },
-        inverse1: {
-          b: inverse.b,
-          d: inverse.d,
-          f: inverse.f,
-          cornerRadius: glass.cornerRadius,
-        },
-        geometry: {
-          halfWidth,
-          halfHeight,
-          cornerSmoothing: glass.cornerSmoothing,
-        },
-        contentRange: {
-          start: contentRange?.start ?? 0,
-          count: contentRange?.count ?? 0,
-        },
+      packedShapes.push({
+        contentRange: contentRange ?? undefined,
+        cornerRadius: glass.cornerRadius,
+        cornerSmoothing: glass.cornerSmoothing,
+        halfHeight,
+        halfWidth,
+        inverse,
+        minimumScale: getMinimumScale(worldDevice),
+        worldDevice,
       })
 
       activeCount += 1
     }
+
+    const submergedAreas = container.exposureBlendSubmergedAreaModulationEnabled
+      ? estimateSubmergedAreaPercentages(packedShapes, container.spacing * dpr)
+      : packedShapes.map(() => 0)
+
+    packedShapes.forEach((shape, index) => {
+      shapesBuffer?.writeAt(index, {
+        inverse0: {
+          a: shape.inverse.a,
+          c: shape.inverse.c,
+          e: shape.inverse.e,
+          minimumScale: shape.minimumScale,
+        },
+        inverse1: {
+          b: shape.inverse.b,
+          d: shape.inverse.d,
+          f: shape.inverse.f,
+          cornerRadius: shape.cornerRadius,
+        },
+        geometry: {
+          halfWidth: shape.halfWidth,
+          halfHeight: shape.halfHeight,
+          cornerSmoothing: shape.cornerSmoothing,
+        },
+        contentRange: {
+          start: shape.contentRange?.start ?? 0,
+          count: shape.contentRange?.count ?? 0,
+          submergedArea: submergedAreas[index] ?? 0,
+        },
+      })
+    })
 
     shapesBuffer?.upload(activeCount)
 

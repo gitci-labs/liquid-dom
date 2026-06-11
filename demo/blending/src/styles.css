@@ -70,6 +70,16 @@ select {
   object-fit: cover;
 }
 
+.blending-sample-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 .blending-interaction-layer {
   position: absolute;
   inset: 0;
@@ -212,58 +222,12 @@ select {
   background: #e1582a;
 }
 
-.blending-plot-line.none,
-.blending-plot-legend .none::before {
-  stroke: #646464;
-  background: #646464;
-}
-
-.blending-plot-line.smoothstep,
-.blending-plot-legend .smoothstep::before {
-  stroke: #0f9f6e;
-  background: #0f9f6e;
-}
-
-.blending-plot-line.smootherstep,
-.blending-plot-legend .smootherstep::before {
-  stroke: #d99000;
-  background: #d99000;
-}
-
-.blending-plot-line.exponential,
-.blending-plot-legend .exponential::before {
-  stroke: #8a55ff;
-  background: #8a55ff;
-}
-
-.blending-plot-line.gaussian,
-.blending-plot-legend .gaussian::before {
-  stroke: #c13c8a;
-  background: #c13c8a;
-}
-
-.blending-plot-line.rational,
-.blending-plot-legend .rational::before {
-  stroke: #009ca6;
-  background: #009ca6;
-}
-
-.blending-plot-line.beta-cdf,
-.blending-plot-legend .beta-cdf::before {
-  stroke: #74583f;
-  background: #74583f;
-}
-
-.blending-plot-line.logistic-window,
-.blending-plot-legend .logistic-window::before {
-  stroke: #d12f45;
-  background: #d12f45;
-}
-
-.blending-plot-line.exposure-window,
-.blending-plot-legend .exposure-window::before {
+.blending-plot-line.submerged-k {
   stroke: #111111;
-  background: #111111;
+}
+
+.submerged-k-plot {
+  margin-top: 4px;
 }
 
 .blending-plot-labels {

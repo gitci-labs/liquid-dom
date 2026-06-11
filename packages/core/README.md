@@ -160,7 +160,7 @@ That means a `Glass` must ultimately be nested under a `Container`; it cannot be
 
 | Group | Properties |
 | --- | --- |
-| Shape and fusion | `spacing`, `normalDivergenceBlendPower`, `normalDivergenceBlendEnabled` |
+| Shape and fusion | `spacing`, `normalDivergenceBlendMode`, `normalDivergenceBlendEnabled`, `exposureBlendSubmergedAreaModulationEnabled`, `exposureBlendSubmergedAreaMinStrength`, `exposureBlendSubmergedAreaPeriod`, `exposureBlendSubmergedAreaSharpness`, `exposureBlendSubmergedAreaDelay` |
 | Blur and displacement | `blur`, `bezelWidth`, `displacementFactor`, `displacementBlur`, `debugDisplacement` |
 | Refraction | `thickness`, `ior`, `contentIor`, `contentDepth`, `dispersion`, `surfaceProfile` |
 | Specular and reflection | `lightDirection`, `specularStrength`, `specularWidth`, `specularFalloff`, `oppositeSpecularStrength`, `specularSharpness`, `specularOpacity`, `reflectionOffset` |
@@ -178,7 +178,7 @@ Default values:
 | `thickness` | `90` |
 | `displacementFactor` | `1` |
 | `displacementBlur` | `6` |
-| `normalDivergenceBlendPower` | `0.5` |
+| `normalDivergenceBlendMode` | `'half-chord'` |
 | `normalDivergenceBlendEnabled` | `true` |
 | `ior` | `1.5` |
 | `contentIor` | `1` |
@@ -200,6 +200,11 @@ Default values:
 | `shadowBlur` | `24` |
 | `shadowSpread` | `0` |
 | `debugDisplacement` | `false` |
+| `exposureBlendSubmergedAreaModulationEnabled` | `true` |
+| `exposureBlendSubmergedAreaMinStrength` | `0.1` |
+| `exposureBlendSubmergedAreaPeriod` | `0.4` |
+| `exposureBlendSubmergedAreaSharpness` | `2` |
+| `exposureBlendSubmergedAreaDelay` | `0` |
 | `zIndex` | `0` |
 
 `specularWidth` accepts a CSS pixel number or `'hairline'`. Numeric values scale with DPR; `'hairline'` resolves to one device pixel at the active DPR.

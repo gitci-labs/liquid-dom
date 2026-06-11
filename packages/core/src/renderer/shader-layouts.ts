@@ -11,11 +11,13 @@ export const GlobalsLayout = structLayout({
   container: vec4('opacity'),
   shape: vec4('smoothing', 'bezelWidth', 'shapeCount', 'surfaceProfile'),
   sdf: vec4('normalDivergenceBlendMode', 'normalDivergenceBlendEnabled'),
-  sdfParams0: vec4('exponentialLambda', 'gaussianLambda', 'rationalSoftness'),
-  sdfParams1: vec4('logisticCenter', 'logisticK'),
-  sdfParams2: vec4('betaAlpha', 'betaBeta'),
-  sdfParams3: vec4('exposureStrength', 'exposureBandScale', 'exposureMinBand', 'exposureMode'),
-  sdfParams4: vec4('exposureAngleRange', 'exposureAnglePlateau', 'exposureAngleMode'),
+  sdfParams0: vec4(
+    'submergedAreaModulationEnabled',
+    'submergedAreaMinStrength',
+    'submergedAreaPeriod',
+    'submergedAreaSharpness',
+  ),
+  sdfParams1: vec4('submergedAreaDelay'),
   glass: vec4('thickness', 'displacementFactor', 'ior', 'dispersion'),
   content: vec4('ior', 'depth'),
   lighting: vec4('x', 'y'),
@@ -32,7 +34,7 @@ export const ShapeDataLayout = structLayout({
   inverse0: vec4('a', 'c', 'e', 'minimumScale'),
   inverse1: vec4('b', 'd', 'f', 'cornerRadius'),
   geometry: vec4('halfWidth', 'halfHeight', 'cornerSmoothing'),
-  contentRange: vec4('start', 'count'),
+  contentRange: vec4('start', 'count', 'submergedArea'),
 })
 
 /** Storage layout for one glass-attached HTML content atlas entry. */

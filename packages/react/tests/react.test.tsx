@@ -446,22 +446,12 @@ describe('React layout components', () => {
       <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <GlassContainer
           ref={containerRef}
-          normalDivergenceBlendMode="smoothstep"
-          normalDivergenceBlendExponentialLambda={2.5}
-          normalDivergenceBlendGaussianLambda={3.5}
-          normalDivergenceBlendRationalSoftness={0.4}
-          normalDivergenceBlendBetaAlpha={1.8}
-          normalDivergenceBlendBetaBeta={2.6}
-          normalDivergenceBlendLogisticCenter={0.45}
-          normalDivergenceBlendLogisticK={14}
-          exposureBlendEnabled={false}
-          exposureBlendStrength={0.6}
-          exposureBlendBandScale={0.75}
-          exposureBlendMinBand={2}
-          exposureBlendAngleRange={Math.PI / 4}
-          exposureBlendAnglePlateau={Math.PI / 12}
-          exposureBlendAngleCurve="triangle"
-          exposureBlendCurve="smoothstep"
+          normalDivergenceBlendMode="half-chord"
+          exposureBlendSubmergedAreaModulationEnabled={false}
+          exposureBlendSubmergedAreaMinStrength={0.2}
+          exposureBlendSubmergedAreaPeriod={0.5}
+          exposureBlendSubmergedAreaSharpness={3}
+          exposureBlendSubmergedAreaDelay={0.1}
         >
           <Glass>
             <FixedHtml width={10} height={10} />
@@ -470,36 +460,24 @@ describe('React layout components', () => {
       </LiquidCanvas>,
     )
 
-    expect(containerRef.current?.normalDivergenceBlendMode).toBe('smoothstep')
-    expect(containerRef.current?.normalDivergenceBlendExponentialLambda).toBe(2.5)
-    expect(containerRef.current?.normalDivergenceBlendGaussianLambda).toBe(3.5)
-    expect(containerRef.current?.normalDivergenceBlendRationalSoftness).toBe(0.4)
-    expect(containerRef.current?.normalDivergenceBlendBetaAlpha).toBe(1.8)
-    expect(containerRef.current?.normalDivergenceBlendBetaBeta).toBe(2.6)
-    expect(containerRef.current?.normalDivergenceBlendLogisticCenter).toBe(0.45)
-    expect(containerRef.current?.normalDivergenceBlendLogisticK).toBe(14)
-    expect(containerRef.current?.exposureBlendEnabled).toBe(false)
-    expect(containerRef.current?.exposureBlendStrength).toBe(0.6)
-    expect(containerRef.current?.exposureBlendBandScale).toBe(0.75)
-    expect(containerRef.current?.exposureBlendMinBand).toBe(2)
-    expect(containerRef.current?.exposureBlendAngleRange).toBe(Math.PI / 4)
-    expect(containerRef.current?.exposureBlendAnglePlateau).toBe(Math.PI / 12)
-    expect(containerRef.current?.exposureBlendAngleCurve).toBe('triangle')
-    expect(containerRef.current?.exposureBlendCurve).toBe('smoothstep')
+    expect(containerRef.current?.normalDivergenceBlendMode).toBe('half-chord')
+    expect(containerRef.current?.exposureBlendSubmergedAreaModulationEnabled).toBe(false)
+    expect(containerRef.current?.exposureBlendSubmergedAreaMinStrength).toBe(0.2)
+    expect(containerRef.current?.exposureBlendSubmergedAreaPeriod).toBe(0.5)
+    expect(containerRef.current?.exposureBlendSubmergedAreaSharpness).toBe(3)
+    expect(containerRef.current?.exposureBlendSubmergedAreaDelay).toBe(0.1)
 
     await view.rerender(
       <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <GlassContainer
           ref={containerRef}
           normalDivergenceBlendMode="angle"
-          exposureBlendEnabled
-          exposureBlendStrength={0.25}
-          exposureBlendBandScale={1.1}
-          exposureBlendMinBand={3}
-          exposureBlendAngleRange={Math.PI / 3}
-          exposureBlendAnglePlateau={Math.PI / 8}
-          exposureBlendAngleCurve="none"
-          exposureBlendCurve="smootherstep"
+          normalDivergenceBlendEnabled={false}
+          exposureBlendSubmergedAreaModulationEnabled={true}
+          exposureBlendSubmergedAreaMinStrength={0.1}
+          exposureBlendSubmergedAreaPeriod={0.4}
+          exposureBlendSubmergedAreaSharpness={2}
+          exposureBlendSubmergedAreaDelay={0.2}
         >
           <Glass>
             <FixedHtml width={10} height={10} />
@@ -509,34 +487,24 @@ describe('React layout components', () => {
     )
 
     expect(containerRef.current?.normalDivergenceBlendMode).toBe('angle')
-    expect(containerRef.current?.exposureBlendEnabled).toBe(true)
-    expect(containerRef.current?.exposureBlendStrength).toBe(0.25)
-    expect(containerRef.current?.exposureBlendBandScale).toBe(1.1)
-    expect(containerRef.current?.exposureBlendMinBand).toBe(3)
-    expect(containerRef.current?.exposureBlendAngleRange).toBe(Math.PI / 3)
-    expect(containerRef.current?.exposureBlendAnglePlateau).toBe(Math.PI / 8)
-    expect(containerRef.current?.exposureBlendAngleCurve).toBe('none')
-    expect(containerRef.current?.exposureBlendCurve).toBe('smootherstep')
+    expect(containerRef.current?.normalDivergenceBlendEnabled).toBe(false)
+    expect(containerRef.current?.exposureBlendSubmergedAreaModulationEnabled).toBe(true)
+    expect(containerRef.current?.exposureBlendSubmergedAreaMinStrength).toBe(0.1)
+    expect(containerRef.current?.exposureBlendSubmergedAreaPeriod).toBe(0.4)
+    expect(containerRef.current?.exposureBlendSubmergedAreaSharpness).toBe(2)
+    expect(containerRef.current?.exposureBlendSubmergedAreaDelay).toBe(0.2)
 
     await view.rerender(
       <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <GlassContainer
           ref={containerRef}
-          normalDivergenceBlendMode="smootherstep"
-          normalDivergenceBlendExponentialLambda={7}
-          normalDivergenceBlendGaussianLambda={8}
-          normalDivergenceBlendRationalSoftness={0.2}
-          normalDivergenceBlendBetaAlpha={1.2}
-          normalDivergenceBlendBetaBeta={3.4}
-          normalDivergenceBlendLogisticCenter={0.6}
-          normalDivergenceBlendLogisticK={9}
-          exposureBlendStrength={0.8}
-          exposureBlendBandScale={1.4}
-          exposureBlendMinBand={4}
-          exposureBlendAngleRange={Math.PI / 6}
-          exposureBlendAnglePlateau={Math.PI / 18}
-          exposureBlendAngleCurve="cosine-peak"
-          exposureBlendCurve="smoothstep"
+          normalDivergenceBlendMode="half-chord"
+          normalDivergenceBlendEnabled={true}
+          exposureBlendSubmergedAreaModulationEnabled={false}
+          exposureBlendSubmergedAreaMinStrength={0.3}
+          exposureBlendSubmergedAreaPeriod={0.6}
+          exposureBlendSubmergedAreaSharpness={4}
+          exposureBlendSubmergedAreaDelay={0.05}
         >
           <Glass>
             <FixedHtml width={10} height={10} />
@@ -545,33 +513,13 @@ describe('React layout components', () => {
       </LiquidCanvas>,
     )
 
-    expect(containerRef.current?.normalDivergenceBlendMode).toBe('smootherstep')
-    expect(containerRef.current?.normalDivergenceBlendExponentialLambda).toBe(7)
-    expect(containerRef.current?.normalDivergenceBlendGaussianLambda).toBe(8)
-    expect(containerRef.current?.normalDivergenceBlendRationalSoftness).toBe(0.2)
-    expect(containerRef.current?.normalDivergenceBlendBetaAlpha).toBe(1.2)
-    expect(containerRef.current?.normalDivergenceBlendBetaBeta).toBe(3.4)
-    expect(containerRef.current?.normalDivergenceBlendLogisticCenter).toBe(0.6)
-    expect(containerRef.current?.normalDivergenceBlendLogisticK).toBe(9)
-    expect(containerRef.current?.exposureBlendStrength).toBe(0.8)
-    expect(containerRef.current?.exposureBlendBandScale).toBe(1.4)
-    expect(containerRef.current?.exposureBlendMinBand).toBe(4)
-    expect(containerRef.current?.exposureBlendAngleRange).toBe(Math.PI / 6)
-    expect(containerRef.current?.exposureBlendAnglePlateau).toBe(Math.PI / 18)
-    expect(containerRef.current?.exposureBlendAngleCurve).toBe('cosine-peak')
-    expect(containerRef.current?.exposureBlendCurve).toBe('smoothstep')
-
-    await view.rerender(
-      <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
-        <GlassContainer ref={containerRef} normalDivergenceBlendMode="none">
-          <Glass>
-            <FixedHtml width={10} height={10} />
-          </Glass>
-        </GlassContainer>
-      </LiquidCanvas>,
-    )
-
-    expect(containerRef.current?.normalDivergenceBlendMode).toBe('none')
+    expect(containerRef.current?.normalDivergenceBlendMode).toBe('half-chord')
+    expect(containerRef.current?.normalDivergenceBlendEnabled).toBe(true)
+    expect(containerRef.current?.exposureBlendSubmergedAreaModulationEnabled).toBe(false)
+    expect(containerRef.current?.exposureBlendSubmergedAreaMinStrength).toBe(0.3)
+    expect(containerRef.current?.exposureBlendSubmergedAreaPeriod).toBe(0.6)
+    expect(containerRef.current?.exposureBlendSubmergedAreaSharpness).toBe(4)
+    expect(containerRef.current?.exposureBlendSubmergedAreaDelay).toBe(0.05)
   })
 
   it('keeps child order stable through StrictMode effect replay', async () => {

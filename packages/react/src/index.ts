@@ -81,4 +81,4 @@ export type {
   ZStackProps,
   ZStackRef,
 } from './types'
-export type { ExposureBlendAngleCurve, ExposureBlendCurve, NormalDivergenceBlendMode } from '@liquid-dom/core'
+export type { NormalDivergenceBlendMode } from '@liquid-dom/core'

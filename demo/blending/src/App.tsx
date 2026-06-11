@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import {
   Frame,
   Glass,
@@ -7,72 +7,34 @@ import {
   LiquidCanvas,
   Transform,
   ZStack,
-  type ExposureBlendAngleCurve,
-  type ExposureBlendCurve,
   type NormalDivergenceBlendMode,
 } from '@liquid-dom/react'
 
 const GLASS_WIDTH = 220
 const GLASS_HEIGHT = 132
-const GLASS_CORNER_RADIUS = 60
+const GLASS_CORNER_RADIUS = 50
 const GLASS_ORIGIN = { x: 0.5, y: 0.5 }
 const CONTAINER_SPACING = 160
 const MIN_CONTAINER_SPACING = 0
 const MAX_CONTAINER_SPACING = 160
-const NORMAL_GATING_EXPONENTIAL_LAMBDA = 4
-const NORMAL_GATING_GAUSSIAN_LAMBDA = 4
-const MIN_NORMAL_GATING_LAMBDA = 0
-const MAX_NORMAL_GATING_LAMBDA = 12
-const NORMAL_GATING_LAMBDA_STEP = 0.1
-const NORMAL_GATING_RATIONAL_SOFTNESS = 0.5
-const NORMAL_GATING_BETA_ALPHA = 1.5
-const NORMAL_GATING_BETA_BETA = 2.2
-const MIN_NORMAL_GATING_BETA_PARAMETER = 0.2
-const MAX_NORMAL_GATING_BETA_PARAMETER = 5
-const NORMAL_GATING_BETA_PARAMETER_STEP = 0.05
-const MIN_NORMAL_GATING_SOFTNESS = 0
-const MAX_NORMAL_GATING_SOFTNESS = 1
-const NORMAL_GATING_SOFTNESS_STEP = 0.01
-const NORMAL_GATING_LOGISTIC_CENTER = 0.5
-const NORMAL_GATING_LOGISTIC_K = 12
-const MIN_NORMAL_GATING_LOGISTIC_K = 0
-const MAX_NORMAL_GATING_LOGISTIC_K = 30
-const NORMAL_GATING_LOGISTIC_K_STEP = 0.1
-const EXPOSURE_GATING_STRENGTH = 1
-const MIN_EXPOSURE_GATING_STRENGTH = 0
-const MAX_EXPOSURE_GATING_STRENGTH = 1
-const EXPOSURE_GATING_STRENGTH_STEP = 0.01
-const EXPOSURE_GATING_BAND_SCALE = 0.4
-const MIN_EXPOSURE_GATING_BAND_SCALE = 0
-const MAX_EXPOSURE_GATING_BAND_SCALE = 1.5
-const EXPOSURE_GATING_BAND_SCALE_STEP = 0.01
-const EXPOSURE_GATING_MIN_BAND = 1
-const MIN_EXPOSURE_GATING_MIN_BAND = 0
-const MAX_EXPOSURE_GATING_MIN_BAND = 6
-const EXPOSURE_GATING_MIN_BAND_STEP = 0.1
-const EXPOSURE_GATING_ANGLE_RANGE = 90
-const MIN_EXPOSURE_GATING_ANGLE_RANGE = 0
-const MAX_EXPOSURE_GATING_ANGLE_RANGE = 90
-const EXPOSURE_GATING_ANGLE_RANGE_STEP = 1
-const EXPOSURE_GATING_ANGLE_PLATEAU = 30
-const MIN_EXPOSURE_GATING_ANGLE_PLATEAU = 0
-const MAX_EXPOSURE_GATING_ANGLE_PLATEAU = 90
-const EXPOSURE_GATING_ANGLE_PLATEAU_STEP = 1
-const EXPOSURE_GATING_ANGLE_CURVE: ExposureBlendAngleCurve = 'plateau'
-const EXPOSURE_GATING_ANGLE_CURVE_OPTIONS = [
-  { value: 'none', label: 'None' },
-  { value: 'triangle', label: 'Triangle' },
-  { value: 'plateau', label: 'Plateau' },
-  { value: 'sine', label: 'Sine' },
-  { value: 'cosine-peak', label: 'Cosine peak' },
-] satisfies Array<{ value: ExposureBlendAngleCurve; label: string }>
-const EXPOSURE_GATING_CURVE: ExposureBlendCurve = 'smootherstep'
-const EXPOSURE_GATING_CURVE_OPTIONS = [
-  { value: 'smootherstep', label: 'Smootherstep' },
-  { value: 'smoothstep', label: 'Smoothstep' },
-  { value: 'smoothstep-in', label: 'Ramp up' },
-  { value: 'smoothstep-out', label: 'Ramp out' },
-] satisfies Array<{ value: ExposureBlendCurve; label: string }>
+const BLEND_INFLUENCE_GATING_ENABLED = true
+const BLEND_INFLUENCE_MIN_K = 0.1
+const BLEND_INFLUENCE_PERIOD = 0.4
+const BLEND_INFLUENCE_SHARPNESS = 2
+const BLEND_INFLUENCE_DELAY = 0
+const MIN_BLEND_INFLUENCE_MIN_K = 0
+const MAX_BLEND_INFLUENCE_MIN_K = 1
+const BLEND_INFLUENCE_MIN_K_STEP = 0.01
+const MIN_BLEND_INFLUENCE_PERIOD = 0.01
+const MAX_BLEND_INFLUENCE_PERIOD = 1
+const BLEND_INFLUENCE_PERIOD_STEP = 0.01
+const MIN_BLEND_INFLUENCE_SHARPNESS = 0.1
+const MAX_BLEND_INFLUENCE_SHARPNESS = 8
+const BLEND_INFLUENCE_SHARPNESS_STEP = 0.1
+const MIN_BLEND_INFLUENCE_DELAY = 0
+const MAX_BLEND_INFLUENCE_DELAY = 0.95
+const BLEND_INFLUENCE_DELAY_STEP = 0.01
+const SAMPLE_VISUALIZATION_OPACITY = 0.5
 const CORNER_HIT_RADIUS = 20
 const EDGE_HIT_SIZE = 16
 const MIN_GLASS_WIDTH = 88
@@ -83,17 +45,15 @@ const PLOT_WIDTH = 800
 const PLOT_HEIGHT = 240
 const PLOT_MARGIN = { top: 18, right: 18, bottom: 38, left: 48 }
 const PLOT_STEPS = 96
+const SUBMERGED_AREA_SAMPLE_STEPS = 24
+const SUBMERGED_AREA_AA_PX = 1
+const SDF_EPSILON = 0.0001
+const DEFAULT_CORNER_SMOOTHING = 0.6
+const CIRCULAR_CORNER_EXPONENT = 2
+const CORNER_SMOOTHING_EXPONENT_DELTA = (4 - CIRCULAR_CORNER_EXPONENT) / DEFAULT_CORNER_SMOOTHING
 const NORMAL_GATING_OPTIONS = [
   { value: 'half-chord', label: 'Half-chord' },
   { value: 'angle', label: 'Angle' },
-  { value: 'none', label: 'None' },
-  { value: 'smoothstep', label: 'Smoothstep' },
-  { value: 'smootherstep', label: 'Smootherstep' },
-  { value: 'exponential', label: 'Exponential' },
-  { value: 'gaussian', label: 'Gaussian' },
-  { value: 'rational', label: 'Rational' },
-  { value: 'beta-cdf', label: 'Beta-CDF' },
-  { value: 'logistic-window', label: 'Logistic Window' },
 ] satisfies Array<{ value: NormalDivergenceBlendMode; label: string }>
 
 type ShapeId = 'left' | 'right'
@@ -111,6 +71,18 @@ type ShapeState = {
 type StagePoint = {
   x: number
   y: number
+}
+
+type StageSize = {
+  width: number
+  height: number
+}
+
+type SamplePoint = StagePoint & {
+  id: string
+  coverage: number
+  influence: number
+  shapeId: ShapeId
 }
 
 type InteractionState =
@@ -162,23 +134,33 @@ export default function App() {
   const [shapes, setShapes] = useState(INITIAL_SHAPES)
   const [normalGatingEnabled, setNormalGatingEnabled] = useState(true)
   const [normalGatingMode, setNormalGatingMode] = useState<NormalDivergenceBlendMode>('half-chord')
-  const [normalGatingExponentialLambda, setNormalGatingExponentialLambda] = useState(NORMAL_GATING_EXPONENTIAL_LAMBDA)
-  const [normalGatingGaussianLambda, setNormalGatingGaussianLambda] = useState(NORMAL_GATING_GAUSSIAN_LAMBDA)
-  const [normalGatingRationalSoftness, setNormalGatingRationalSoftness] = useState(NORMAL_GATING_RATIONAL_SOFTNESS)
-  const [normalGatingBetaAlpha, setNormalGatingBetaAlpha] = useState(NORMAL_GATING_BETA_ALPHA)
-  const [normalGatingBetaBeta, setNormalGatingBetaBeta] = useState(NORMAL_GATING_BETA_BETA)
-  const [normalGatingLogisticCenter, setNormalGatingLogisticCenter] = useState(NORMAL_GATING_LOGISTIC_CENTER)
-  const [normalGatingLogisticK, setNormalGatingLogisticK] = useState(NORMAL_GATING_LOGISTIC_K)
-  const [exposureGatingEnabled, setExposureGatingEnabled] = useState(true)
-  const [exposureGatingStrength, setExposureGatingStrength] = useState(EXPOSURE_GATING_STRENGTH)
-  const [exposureGatingBandScale, setExposureGatingBandScale] = useState(EXPOSURE_GATING_BAND_SCALE)
-  const [exposureGatingMinBand, setExposureGatingMinBand] = useState(EXPOSURE_GATING_MIN_BAND)
-  const [exposureGatingAngleRange, setExposureGatingAngleRange] = useState(EXPOSURE_GATING_ANGLE_RANGE)
-  const [exposureGatingAnglePlateau, setExposureGatingAnglePlateau] = useState(EXPOSURE_GATING_ANGLE_PLATEAU)
-  const [exposureGatingAngleCurve, setExposureGatingAngleCurve] = useState<ExposureBlendAngleCurve>(EXPOSURE_GATING_ANGLE_CURVE)
-  const [exposureGatingCurve, setExposureGatingCurve] = useState<ExposureBlendCurve>(EXPOSURE_GATING_CURVE)
+  const [blendInfluenceGatingEnabled, setBlendInfluenceGatingEnabled] = useState(BLEND_INFLUENCE_GATING_ENABLED)
+  const [blendInfluenceMinK, setBlendInfluenceMinK] = useState(BLEND_INFLUENCE_MIN_K)
+  const [blendInfluencePeriod, setBlendInfluencePeriod] = useState(BLEND_INFLUENCE_PERIOD)
+  const [blendInfluenceSharpness, setBlendInfluenceSharpness] = useState(BLEND_INFLUENCE_SHARPNESS)
+  const [blendInfluenceDelay, setBlendInfluenceDelay] = useState(BLEND_INFLUENCE_DELAY)
+  const [samplePointsVisible, setSamplePointsVisible] = useState(false)
+  const [stageSize, setStageSize] = useState<StageSize>({ width: 0, height: 0 })
   const [blendingDistance, setBlendingDistance] = useState(CONTAINER_SPACING)
   const [hoveredGatingCurve, setHoveredGatingCurve] = useState<NormalDivergenceBlendMode | null>(null)
+
+  useEffect(() => {
+    const element = stageRef.current
+    if (!element) {
+      return
+    }
+
+    const updateStageSize = () => {
+      const bounds = element.getBoundingClientRect()
+      setStageSize({ width: bounds.width, height: bounds.height })
+    }
+
+    updateStageSize()
+    const resizeObserver = new ResizeObserver(updateStageSize)
+    resizeObserver.observe(element)
+
+    return () => resizeObserver.disconnect()
+  }, [])
 
   function getStagePoint(event: ReactPointerEvent<HTMLDivElement>): StagePoint {
     const bounds = stageRef.current?.getBoundingClientRect()
@@ -292,21 +274,11 @@ export default function App() {
                   spacing={blendingDistance}
                   normalDivergenceBlendEnabled={normalGatingEnabled}
                   normalDivergenceBlendMode={normalGatingMode}
-                  normalDivergenceBlendExponentialLambda={normalGatingExponentialLambda}
-                  normalDivergenceBlendGaussianLambda={normalGatingGaussianLambda}
-                  normalDivergenceBlendRationalSoftness={normalGatingRationalSoftness}
-                  normalDivergenceBlendBetaAlpha={normalGatingBetaAlpha}
-                  normalDivergenceBlendBetaBeta={normalGatingBetaBeta}
-                  normalDivergenceBlendLogisticCenter={normalGatingLogisticCenter}
-                  normalDivergenceBlendLogisticK={normalGatingLogisticK}
-                  exposureBlendEnabled={exposureGatingEnabled}
-                  exposureBlendStrength={exposureGatingStrength}
-                  exposureBlendBandScale={exposureGatingBandScale}
-                  exposureBlendMinBand={exposureGatingMinBand}
-                  exposureBlendAngleRange={degreesToRadians(exposureGatingAngleRange)}
-                  exposureBlendAnglePlateau={degreesToRadians(exposureGatingAnglePlateau)}
-                  exposureBlendAngleCurve={exposureGatingAngleCurve}
-                  exposureBlendCurve={exposureGatingCurve}
+                  exposureBlendSubmergedAreaModulationEnabled={blendInfluenceGatingEnabled}
+                  exposureBlendSubmergedAreaMinStrength={blendInfluenceMinK}
+                  exposureBlendSubmergedAreaPeriod={blendInfluencePeriod}
+                  exposureBlendSubmergedAreaSharpness={blendInfluenceSharpness}
+                  exposureBlendSubmergedAreaDelay={blendInfluenceDelay}
                   bezelWidth={18}
                   displacementBlur={8}
                   thickness={86}
@@ -337,6 +309,14 @@ export default function App() {
               </Frame>
             </ZStack>
           </LiquidCanvas>
+          {samplePointsVisible && stageSize.width > 0 && stageSize.height > 0 && (
+            <SamplePointsOverlay
+              blendDistance={blendingDistance}
+              opacity={SAMPLE_VISUALIZATION_OPACITY}
+              shapes={shapes}
+              stageSize={stageSize}
+            />
+          )}
 
           <div className="blending-interaction-layer" aria-hidden="true">
             {shapes.map((shape) => (
@@ -376,42 +356,23 @@ export default function App() {
               Normal gating
             </button>
             <button
-              aria-pressed={exposureGatingEnabled}
-              className={`blending-toggle ${exposureGatingEnabled ? 'active' : ''}`}
+              aria-pressed={blendInfluenceGatingEnabled}
+              className={`blending-toggle ${blendInfluenceGatingEnabled ? 'active' : ''}`}
               type="button"
-              onClick={() => setExposureGatingEnabled((enabled) => !enabled)}
+              onClick={() => setBlendInfluenceGatingEnabled((enabled) => !enabled)}
             >
               <span className="blending-toggle-checkbox" aria-hidden="true" />
-              Exposure gating
+              Blend influence
             </button>
-            <label className="blending-mode-control">
-              <span>Exposure curve</span>
-              <select
-                aria-label="Exposure curve"
-                value={exposureGatingCurve}
-                onChange={(event) => setExposureGatingCurve(event.currentTarget.value as ExposureBlendCurve)}
-              >
-                {EXPOSURE_GATING_CURVE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="blending-mode-control">
-              <span>Exposure angle</span>
-              <select
-                aria-label="Exposure angle curve"
-                value={exposureGatingAngleCurve}
-                onChange={(event) => setExposureGatingAngleCurve(event.currentTarget.value as ExposureBlendAngleCurve)}
-              >
-                {EXPOSURE_GATING_ANGLE_CURVE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <button
+              aria-pressed={samplePointsVisible}
+              className={`blending-toggle ${samplePointsVisible ? 'active' : ''}`}
+              type="button"
+              onClick={() => setSamplePointsVisible((visible) => !visible)}
+            >
+              <span className="blending-toggle-checkbox" aria-hidden="true" />
+              Sample points
+            </button>
             <label className="blending-distance-control">
               <span>Blending distance</span>
               <input
@@ -443,129 +404,45 @@ export default function App() {
         <GatingPlot
           hoveredCurve={hoveredGatingCurve}
           onHoveredCurveChange={setHoveredGatingCurve}
-          exponentialLambda={normalGatingExponentialLambda}
-          gaussianLambda={normalGatingGaussianLambda}
-          rationalSoftness={normalGatingRationalSoftness}
-          betaAlpha={normalGatingBetaAlpha}
-          betaBeta={normalGatingBetaBeta}
-          logisticCenter={normalGatingLogisticCenter}
-          logisticK={normalGatingLogisticK}
         />
-        <ExposureAnglePlot
-          angleCurve={exposureGatingAngleCurve}
-          anglePlateau={exposureGatingAnglePlateau}
-          angleRange={exposureGatingAngleRange}
+        <BlendInfluenceKPlot
+          delay={blendInfluenceDelay}
+          minK={blendInfluenceMinK}
+          period={blendInfluencePeriod}
+          sharpness={blendInfluenceSharpness}
         />
         <div className="blending-parameter-controls">
-          <ParameterSlider
-            label="Exponential lambda"
-            gatingCurve="exponential"
-            max={MAX_NORMAL_GATING_LAMBDA}
-            min={MIN_NORMAL_GATING_LAMBDA}
-            step={NORMAL_GATING_LAMBDA_STEP}
-            value={normalGatingExponentialLambda}
-            onGatingCurveHover={setHoveredGatingCurve}
-            onChange={setNormalGatingExponentialLambda}
-          />
-          <ParameterSlider
-            label="Gaussian lambda"
-            gatingCurve="gaussian"
-            max={MAX_NORMAL_GATING_LAMBDA}
-            min={MIN_NORMAL_GATING_LAMBDA}
-            step={NORMAL_GATING_LAMBDA_STEP}
-            value={normalGatingGaussianLambda}
-            onGatingCurveHover={setHoveredGatingCurve}
-            onChange={setNormalGatingGaussianLambda}
-          />
-          <ParameterSlider
-            label="Rational softness"
-            gatingCurve="rational"
-            max={MAX_NORMAL_GATING_SOFTNESS}
-            min={MIN_NORMAL_GATING_SOFTNESS}
-            step={NORMAL_GATING_SOFTNESS_STEP}
-            value={normalGatingRationalSoftness}
-            onGatingCurveHover={setHoveredGatingCurve}
-            onChange={setNormalGatingRationalSoftness}
-          />
-          <ParameterSlider
-            label="Beta alpha"
-            gatingCurve="beta-cdf"
-            max={MAX_NORMAL_GATING_BETA_PARAMETER}
-            min={MIN_NORMAL_GATING_BETA_PARAMETER}
-            step={NORMAL_GATING_BETA_PARAMETER_STEP}
-            value={normalGatingBetaAlpha}
-            onGatingCurveHover={setHoveredGatingCurve}
-            onChange={setNormalGatingBetaAlpha}
-          />
-          <ParameterSlider
-            label="Beta beta"
-            gatingCurve="beta-cdf"
-            max={MAX_NORMAL_GATING_BETA_PARAMETER}
-            min={MIN_NORMAL_GATING_BETA_PARAMETER}
-            step={NORMAL_GATING_BETA_PARAMETER_STEP}
-            value={normalGatingBetaBeta}
-            onGatingCurveHover={setHoveredGatingCurve}
-            onChange={setNormalGatingBetaBeta}
-          />
-          <ParameterSlider
-            label="Logistic center"
-            gatingCurve="logistic-window"
-            max={MAX_NORMAL_GATING_SOFTNESS}
-            min={MIN_NORMAL_GATING_SOFTNESS}
-            step={NORMAL_GATING_SOFTNESS_STEP}
-            value={normalGatingLogisticCenter}
-            onGatingCurveHover={setHoveredGatingCurve}
-            onChange={setNormalGatingLogisticCenter}
-          />
-          <ParameterSlider
-            label="Logistic k"
-            gatingCurve="logistic-window"
-            max={MAX_NORMAL_GATING_LOGISTIC_K}
-            min={MIN_NORMAL_GATING_LOGISTIC_K}
-            step={NORMAL_GATING_LOGISTIC_K_STEP}
-            value={normalGatingLogisticK}
-            onGatingCurveHover={setHoveredGatingCurve}
-            onChange={setNormalGatingLogisticK}
+          <ScalarSlider
+            label="Min k"
+            max={MAX_BLEND_INFLUENCE_MIN_K}
+            min={MIN_BLEND_INFLUENCE_MIN_K}
+            step={BLEND_INFLUENCE_MIN_K_STEP}
+            value={blendInfluenceMinK}
+            onChange={setBlendInfluenceMinK}
           />
           <ScalarSlider
-            label="Exposure strength"
-            max={MAX_EXPOSURE_GATING_STRENGTH}
-            min={MIN_EXPOSURE_GATING_STRENGTH}
-            step={EXPOSURE_GATING_STRENGTH_STEP}
-            value={exposureGatingStrength}
-            onChange={setExposureGatingStrength}
+            label="Period"
+            max={MAX_BLEND_INFLUENCE_PERIOD}
+            min={MIN_BLEND_INFLUENCE_PERIOD}
+            step={BLEND_INFLUENCE_PERIOD_STEP}
+            value={blendInfluencePeriod}
+            onChange={setBlendInfluencePeriod}
           />
           <ScalarSlider
-            label="Exposure band"
-            max={MAX_EXPOSURE_GATING_BAND_SCALE}
-            min={MIN_EXPOSURE_GATING_BAND_SCALE}
-            step={EXPOSURE_GATING_BAND_SCALE_STEP}
-            value={exposureGatingBandScale}
-            onChange={setExposureGatingBandScale}
+            label="Sharpness"
+            max={MAX_BLEND_INFLUENCE_SHARPNESS}
+            min={MIN_BLEND_INFLUENCE_SHARPNESS}
+            step={BLEND_INFLUENCE_SHARPNESS_STEP}
+            value={blendInfluenceSharpness}
+            onChange={setBlendInfluenceSharpness}
           />
           <ScalarSlider
-            label="Min exposure px"
-            max={MAX_EXPOSURE_GATING_MIN_BAND}
-            min={MIN_EXPOSURE_GATING_MIN_BAND}
-            step={EXPOSURE_GATING_MIN_BAND_STEP}
-            value={exposureGatingMinBand}
-            onChange={setExposureGatingMinBand}
-          />
-          <ScalarSlider
-            label="Exposure angle range"
-            max={MAX_EXPOSURE_GATING_ANGLE_RANGE}
-            min={MIN_EXPOSURE_GATING_ANGLE_RANGE}
-            step={EXPOSURE_GATING_ANGLE_RANGE_STEP}
-            value={exposureGatingAngleRange}
-            onChange={setExposureGatingAngleRange}
-          />
-          <ScalarSlider
-            label="Exposure angle plateau"
-            max={MAX_EXPOSURE_GATING_ANGLE_PLATEAU}
-            min={MIN_EXPOSURE_GATING_ANGLE_PLATEAU}
-            step={EXPOSURE_GATING_ANGLE_PLATEAU_STEP}
-            value={exposureGatingAnglePlateau}
-            onChange={setExposureGatingAnglePlateau}
+            label="Delay"
+            max={MAX_BLEND_INFLUENCE_DELAY}
+            min={MIN_BLEND_INFLUENCE_DELAY}
+            step={BLEND_INFLUENCE_DELAY_STEP}
+            value={blendInfluenceDelay}
+            onChange={setBlendInfluenceDelay}
           />
         </div>
       </div>
@@ -576,13 +453,69 @@ export default function App() {
 type GatingPlotProps = {
   hoveredCurve: NormalDivergenceBlendMode | null
   onHoveredCurveChange: (curve: NormalDivergenceBlendMode | null) => void
-  exponentialLambda: number
-  gaussianLambda: number
-  rationalSoftness: number
-  betaAlpha: number
-  betaBeta: number
-  logisticCenter: number
-  logisticK: number
+}
+
+type SamplePointsOverlayProps = {
+  blendDistance: number
+  opacity: number
+  shapes: ShapeState[]
+  stageSize: StageSize
+}
+
+function SamplePointsOverlay({ blendDistance, opacity, shapes, stageSize }: SamplePointsOverlayProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) {
+      return
+    }
+
+    const dpr = getDevicePixelRatio()
+    const width = Math.max(1, Math.round(stageSize.width * dpr))
+    const height = Math.max(1, Math.round(stageSize.height * dpr))
+    if (canvas.width !== width) {
+      canvas.width = width
+    }
+    if (canvas.height !== height) {
+      canvas.height = height
+    }
+
+    const context = canvas.getContext('2d')
+    if (!context) {
+      return
+    }
+
+    context.clearRect(0, 0, width, height)
+    context.save()
+    context.scale(dpr, dpr)
+    context.translate(stageSize.width * 0.5, stageSize.height * 0.5)
+
+    for (const sample of createSubmersionSamplePoints(shapes, blendDistance, dpr)) {
+      const influenced = sample.influence > 0.001
+      const radius = influenced ? 0.95 + sample.influence * 1.35 : 0.9
+      const opacity = Math.min(0.9, 0.24 + sample.coverage * 0.2 + sample.influence * 0.46)
+
+      context.beginPath()
+      context.arc(sample.x, sample.y, radius, 0, Math.PI * 2)
+      context.fillStyle = colorWithAlpha(influenced ? '#ffe45c' : samplePointColor(sample.shapeId), opacity)
+      context.fill()
+      context.strokeStyle = 'rgba(0, 0, 0, 0.42)'
+      context.lineWidth = 0.5
+      context.stroke()
+    }
+
+    context.restore()
+  }, [blendDistance, shapes, stageSize])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      aria-hidden="true"
+      className="blending-sample-overlay"
+      style={{ opacity }}
+    />
+  )
 }
 
 type GatingCurve = {
@@ -594,13 +527,6 @@ type GatingCurve = {
 function GatingPlot({
   hoveredCurve,
   onHoveredCurveChange,
-  exponentialLambda,
-  gaussianLambda,
-  rationalSoftness,
-  betaAlpha,
-  betaBeta,
-  logisticCenter,
-  logisticK,
 }: GatingPlotProps) {
   const curves: GatingCurve[] = [
     {
@@ -612,46 +538,6 @@ function GatingPlot({
       id: 'angle',
       label: 'Angle',
       path: createGatingPath((angle) => angle / Math.PI),
-    },
-    {
-      id: 'none',
-      label: 'None',
-      path: createGatingPath(() => 1),
-    },
-    {
-      id: 'smoothstep',
-      label: 'Smoothstep',
-      path: createGatingPath((angle) => smoothstepGate(angle / Math.PI)),
-    },
-    {
-      id: 'smootherstep',
-      label: 'Smootherstep',
-      path: createGatingPath((angle) => smootherstepGate(angle / Math.PI)),
-    },
-    {
-      id: 'exponential',
-      label: 'Exponential',
-      path: createGatingPath((angle) => normalizedExponentialGate(angle / Math.PI, exponentialLambda)),
-    },
-    {
-      id: 'gaussian',
-      label: 'Gaussian',
-      path: createGatingPath((angle) => normalizedGaussianGate(angle / Math.PI, gaussianLambda)),
-    },
-    {
-      id: 'rational',
-      label: 'Rational',
-      path: createGatingPath((angle) => rationalGate(angle / Math.PI, rationalSoftness)),
-    },
-    {
-      id: 'beta-cdf',
-      label: 'Beta-CDF',
-      path: createGatingPath((angle) => betaCdfGate(angle / Math.PI, betaAlpha, betaBeta)),
-    },
-    {
-      id: 'logistic-window',
-      label: 'Logistic Window',
-      path: createGatingPath((angle) => logisticWindowGate(angle / Math.PI, logisticCenter, logisticK)),
     },
   ]
   const xTicks = [0, 45, 90, 135, 180]
@@ -727,113 +613,70 @@ function GatingPlot({
   )
 }
 
-type ExposureAnglePlotProps = {
-  angleCurve: ExposureBlendAngleCurve
-  anglePlateau: number
-  angleRange: number
+type BlendInfluenceKPlotProps = {
+  delay: number
+  minK: number
+  period: number
+  sharpness: number
 }
 
-function ExposureAnglePlot({ angleCurve, anglePlateau, angleRange }: ExposureAnglePlotProps) {
-  const xTicks = [0, 45, 90, 135, 180]
-  const yTicks = [0, 0.25, 0.5, 0.75, 1]
-  const path = createGatingPath((angle) => exposureAngleWindow(angle, angleCurve, angleRange, anglePlateau))
+function BlendInfluenceKPlot({ delay, minK, period, sharpness }: BlendInfluenceKPlotProps) {
+  const lowK = clamp01(minK)
+  const yMax = 1
+  const path = createBlendInfluenceKPath((influence) => (
+    blendInfluenceKScale(influence, lowK, period, sharpness, delay)
+  ), yMax)
+  const xTicks = [0, 0.25, 0.5, 0.75, 1]
+  const yTicks = [0, yMax * 0.25, yMax * 0.5, yMax * 0.75, yMax]
+  const yLabelStep = 0.01
 
   return (
-    <section className="blending-plot" aria-label="Exposure angle window plot">
+    <section className="blending-plot submerged-k-plot" aria-label="Blend influence k curve plot">
       <svg className="blending-plot-svg" viewBox={`0 0 ${PLOT_WIDTH} ${PLOT_HEIGHT}`} role="img">
-        <title>Exposure angle window</title>
-        <desc>Plot of exposure gating weight against the angle between SDF normals.</desc>
+        <title>Blend influence k curve</title>
+        <desc>Plot of smooth-min k scale against normalized blend-influence area.</desc>
         <g className="blending-plot-grid">
           {yTicks.map((tick) => (
             <line
-              key={`exposure-y-${tick}`}
+              key={`y-${tick}`}
               x1={PLOT_MARGIN.left}
               x2={PLOT_WIDTH - PLOT_MARGIN.right}
-              y1={plotY(tick)}
-              y2={plotY(tick)}
+              y1={plotYForRange(tick, yMax)}
+              y2={plotYForRange(tick, yMax)}
             />
           ))}
           {xTicks.map((tick) => (
             <line
-              key={`exposure-x-${tick}`}
-              x1={plotX((tick / 180) * Math.PI)}
-              x2={plotX((tick / 180) * Math.PI)}
+              key={`x-${tick}`}
+              x1={plotXForUnit(tick)}
+              x2={plotXForUnit(tick)}
               y1={PLOT_MARGIN.top}
               y2={PLOT_HEIGHT - PLOT_MARGIN.bottom}
             />
           ))}
         </g>
         <path className="blending-plot-axis" d={`M${PLOT_MARGIN.left} ${PLOT_MARGIN.top}V${PLOT_HEIGHT - PLOT_MARGIN.bottom}H${PLOT_WIDTH - PLOT_MARGIN.right}`} />
-        <path className="blending-plot-line exposure-window" d={path} />
+        <path className="blending-plot-line submerged-k" d={path} />
         <g className="blending-plot-labels">
           {xTicks.map((tick) => (
-            <text key={`exposure-x-label-${tick}`} x={plotX((tick / 180) * Math.PI)} y={PLOT_HEIGHT - 12} textAnchor="middle">
-              {tick}
-            </text>
-          ))}
-          {yTicks.map((tick) => (
-            <text key={`exposure-y-label-${tick}`} x={PLOT_MARGIN.left - 10} y={plotY(tick) + 4} textAnchor="end">
+            <text key={`x-label-${tick}`} x={plotXForUnit(tick)} y={PLOT_HEIGHT - 12} textAnchor="middle">
               {tick.toFixed(tick === 0 || tick === 1 ? 0 : 2)}
             </text>
           ))}
+          {yTicks.map((tick) => (
+            <text key={`y-label-${tick}`} x={PLOT_MARGIN.left - 10} y={plotYForRange(tick, yMax) + 4} textAnchor="end">
+              {formatParameterValue(tick, yLabelStep)}
+            </text>
+          ))}
           <text x={(PLOT_WIDTH + PLOT_MARGIN.left - PLOT_MARGIN.right) * 0.5} y={PLOT_HEIGHT - 3} textAnchor="middle">
-            angle
+            blend influence
           </text>
           <text x={16} y={(PLOT_HEIGHT + PLOT_MARGIN.top - PLOT_MARGIN.bottom) * 0.5} textAnchor="middle" transform={`rotate(-90 16 ${(PLOT_HEIGHT + PLOT_MARGIN.top - PLOT_MARGIN.bottom) * 0.5})`}>
-            g
+            k
           </text>
         </g>
       </svg>
-      <div className="blending-plot-legend">
-        <span className="exposure-window">Exposure angle window</span>
-      </div>
     </section>
-  )
-}
-
-type ParameterSliderProps = {
-  label: string
-  gatingCurve: NormalDivergenceBlendMode
-  max: number
-  min: number
-  step: number
-  value: number
-  onGatingCurveHover: (curve: NormalDivergenceBlendMode | null) => void
-  onChange: (value: number) => void
-}
-
-function ParameterSlider({
-  label,
-  gatingCurve,
-  max,
-  min,
-  step,
-  value,
-  onGatingCurveHover,
-  onChange,
-}: ParameterSliderProps) {
-  return (
-    <label
-      className="blending-parameter-control"
-      onFocus={() => onGatingCurveHover(gatingCurve)}
-      onBlur={() => onGatingCurveHover(null)}
-      onMouseEnter={() => onGatingCurveHover(gatingCurve)}
-      onMouseLeave={() => onGatingCurveHover(null)}
-      onPointerEnter={() => onGatingCurveHover(gatingCurve)}
-      onPointerLeave={() => onGatingCurveHover(null)}
-    >
-      <span>{label}</span>
-      <input
-        aria-label={label}
-        max={max}
-        min={min}
-        step={step}
-        type="range"
-        value={value}
-        onChange={(event) => onChange(event.currentTarget.valueAsNumber)}
-      />
-      <output>{formatParameterValue(value, step)}</output>
-    </label>
   )
 }
 
@@ -879,107 +722,24 @@ function createGatingPath(resolveGate: (angle: number) => number) {
   }).join(' ')
 }
 
-function exposureAngleWindow(
-  angle: number,
-  angleCurve: ExposureBlendAngleCurve,
-  angleRangeDegrees: number,
-  anglePlateauDegrees: number,
-) {
-  const normalizedAngle = angle / Math.PI
-  if (angleCurve === 'none') {
-    return 1
-  }
-  if (angleCurve === 'triangle') {
-    return 1 - Math.abs(normalizedAngle * 2 - 1)
-  }
-  if (angleCurve === 'sine') {
-    return Math.sin(normalizedAngle * Math.PI)
-  }
-  if (angleCurve === 'cosine-peak') {
-    return 1 - Math.abs(Math.cos(normalizedAngle * Math.PI))
-  }
-
-  const range = Math.max(angleRangeDegrees / 180, 0.0001)
-  const plateau = Math.min(clamp01(anglePlateauDegrees / 180), range)
-  const angleDistance = Math.abs(normalizedAngle - 0.5)
-  const rampProgress = (angleDistance - plateau) / Math.max(range - plateau, 0.0001)
-  return 1 - smootherstepGate(rampProgress)
+function createBlendInfluenceKPath(resolveK: (influence: number) => number, yMax: number) {
+  return Array.from({ length: PLOT_STEPS + 1 }, (_, index) => {
+    const influence = index / PLOT_STEPS
+    const command = index === 0 ? 'M' : 'L'
+    return `${command}${plotXForUnit(influence).toFixed(2)} ${plotYForRange(resolveK(influence), yMax).toFixed(2)}`
+  }).join(' ')
 }
 
-function normalizedExponentialGate(value: number, lambdaInput: number) {
-  const lambda = Math.max(lambdaInput, 0.0001)
-  return (1 - Math.exp(-lambda * value)) / (1 - Math.exp(-lambda))
+function blendInfluenceKScale(influence: number, lowK: number, period: number, sharpness: number, delay: number) {
+  const delayedInfluence = Math.max(influence - delay, 0) / Math.max(1 - delay, SDF_EPSILON)
+  const curve = shapedCosine01(delayedInfluence / Math.max(period, SDF_EPSILON), sharpness)
+  return lowK + (1 - lowK) * curve
 }
 
-function normalizedGaussianGate(value: number, lambdaInput: number) {
-  const lambda = Math.max(lambdaInput, 0.0001)
-  return (1 - Math.exp(-lambda * value * value)) / (1 - Math.exp(-lambda))
-}
-
-function rationalGate(value: number, softnessInput: number) {
-  const softness = clamp01(softnessInput)
-  const denominator = value + softness * (1 - value)
-  return denominator <= 0.0001 ? 0 : value / denominator
-}
-
-function smoothstepGate(value: number) {
-  const x = clamp01(value)
-  return x * x * (3 - 2 * x)
-}
-
-function smootherstepGate(value: number) {
-  const x = clamp01(value)
-  return x * x * x * (x * (x * 6 - 15) + 10)
-}
-
-function betaPdf(value: number, alphaInput: number, betaInput: number) {
-  const alpha = Math.max(alphaInput, 0.05)
-  const beta = Math.max(betaInput, 0.05)
-  const x = Math.min(Math.max(value, 0.0001), 0.9999)
-  return (x ** (alpha - 1)) * ((1 - x) ** (beta - 1))
-}
-
-function integrateBetaPdf(upper: number, alpha: number, beta: number) {
-  const clampedUpper = clamp01(upper)
-  const steps = 16
-  const step = clampedUpper / steps
-  let sum = betaPdf(0, alpha, beta) + betaPdf(clampedUpper, alpha, beta)
-  for (let index = 1; index < steps; index += 1) {
-    sum += (index % 2 === 1 ? 4 : 2) * betaPdf(step * index, alpha, beta)
-  }
-  return (sum * step) / 3
-}
-
-function betaCdfGate(value: number, alphaInput: number, betaInput: number) {
-  const upper = clamp01(value)
-  if (upper <= 0.0001) {
-    return 0
-  }
-  if (upper >= 0.9999) {
-    return 1
-  }
-
-  const alpha = Math.max(alphaInput, 0.05)
-  const beta = Math.max(betaInput, 0.05)
-  const numerator = integrateBetaPdf(upper, alpha, beta)
-  const denominator = Math.max(integrateBetaPdf(1, alpha, beta), 0.0001)
-  return clamp01(numerator / denominator)
-}
-
-function logisticWindowGate(value: number, centerInput: number, steepnessInput: number) {
-  const center = clamp01(centerInput)
-  const steepness = Math.max(steepnessInput, 0.0001)
-  const start = sigmoid(-steepness * center)
-  const end = sigmoid(steepness * (1 - center))
-  const denominator = end - start
-  if (Math.abs(denominator) <= 0.0001) {
-    return value
-  }
-  return clamp01((sigmoid(steepness * (value - center)) - start) / denominator)
-}
-
-function sigmoid(value: number) {
-  return 1 / (1 + Math.exp(-value))
+function shapedCosine01(value: number, sharpness: number) {
+  const wave = Math.cos(value * Math.PI * 2)
+  const shapedWave = Math.sign(wave) * Math.abs(wave) ** Math.max(sharpness, SDF_EPSILON)
+  return 0.5 + 0.5 * shapedWave
 }
 
 function plotX(angle: number) {
@@ -992,16 +752,151 @@ function plotY(gate: number) {
   return PLOT_MARGIN.top + (1 - clamp01(gate)) * height
 }
 
+function plotXForUnit(value: number) {
+  const width = PLOT_WIDTH - PLOT_MARGIN.left - PLOT_MARGIN.right
+  return PLOT_MARGIN.left + clamp01(value) * width
+}
+
+function plotYForRange(value: number, maxValue: number) {
+  const height = PLOT_HEIGHT - PLOT_MARGIN.top - PLOT_MARGIN.bottom
+  const normalizedValue = maxValue <= 0.0001 ? 0 : value / maxValue
+  return PLOT_MARGIN.top + (1 - clamp01(normalizedValue)) * height
+}
+
 function clamp01(value: number) {
   return Math.min(Math.max(value, 0), 1)
 }
 
-function degreesToRadians(degrees: number) {
-  return degrees * Math.PI / 180
-}
-
 function formatParameterValue(value: number, step: number) {
   return step >= 0.1 ? value.toFixed(1) : value.toFixed(2)
+}
+
+function createSubmersionSamplePoints(shapes: ShapeState[], blendDistance: number, dpr: number): SamplePoint[] {
+  if (shapes.length === 0) {
+    return []
+  }
+
+  const blendDistancePx = blendDistance * dpr
+  return shapes.flatMap((shape, shapeIndex) => {
+    const samples: SamplePoint[] = []
+
+    for (let yIndex = 0; yIndex < SUBMERGED_AREA_SAMPLE_STEPS; yIndex += 1) {
+      const localY = ((yIndex + 0.5) / SUBMERGED_AREA_SAMPLE_STEPS) * shape.height
+      for (let xIndex = 0; xIndex < SUBMERGED_AREA_SAMPLE_STEPS; xIndex += 1) {
+        const localX = ((xIndex + 0.5) / SUBMERGED_AREA_SAMPLE_STEPS) * shape.width
+        const shapeCoverage = sdfCoverage(shapeLocalDistanceFromTopLeft(shape, localX, localY) * dpr)
+        if (shapeCoverage <= 0) {
+          continue
+        }
+
+        const stagePoint = shapeLocalPointToStagePoint(shape, localX, localY)
+        const otherDistancePx = shapes.reduce((distance, otherShape, otherIndex) => {
+          if (otherIndex === shapeIndex) {
+            return distance
+          }
+          return Math.min(distance, shapeDistanceAtStagePoint(otherShape, stagePoint) * dpr)
+        }, Number.POSITIVE_INFINITY)
+        const influence = blendInfluenceCoverage(otherDistancePx, blendDistancePx)
+
+        samples.push({
+          id: `${shape.id}-${xIndex}-${yIndex}`,
+          x: stagePoint.x,
+          y: stagePoint.y,
+          coverage: shapeCoverage,
+          influence,
+          shapeId: shape.id,
+        })
+      }
+    }
+
+    return samples
+  })
+}
+
+function shapeLocalPointToStagePoint(shape: ShapeState, localX: number, localY: number): StagePoint {
+  const centeredX = localX - shape.width * 0.5
+  const centeredY = localY - shape.height * 0.5
+  const rotated = rotateLocalVector(centeredX, centeredY, shape.rotation)
+  return {
+    x: shape.x + rotated.x,
+    y: shape.y + rotated.y,
+  }
+}
+
+function shapeDistanceAtStagePoint(shape: ShapeState, point: StagePoint) {
+  const local = stagePointToShapeLocal(point, shape)
+  return shapeLocalDistanceFromTopLeft(
+    shape,
+    local.x + shape.width * 0.5,
+    local.y + shape.height * 0.5,
+  )
+}
+
+function shapeLocalDistanceFromTopLeft(shape: ShapeState, localX: number, localY: number) {
+  const halfWidth = shape.width * 0.5
+  const halfHeight = shape.height * 0.5
+  const cornerLimit = Math.min(halfWidth, halfHeight)
+  const clampedRadius = clamp(GLASS_CORNER_RADIUS, 0, cornerLimit)
+  const centeredX = localX - halfWidth
+  const centeredY = localY - halfHeight
+  const qx = Math.abs(centeredX) - halfWidth + clampedRadius
+  const qy = Math.abs(centeredY) - halfHeight + clampedRadius
+  const maxSmoothingThatFits = GLASS_CORNER_RADIUS > SDF_EPSILON
+    ? Math.max(cornerLimit / Math.max(GLASS_CORNER_RADIUS, SDF_EPSILON) - 1, 0)
+    : 0
+  const effectiveSmoothing = Math.min(clamp(DEFAULT_CORNER_SMOOTHING, 0, 1), maxSmoothingThatFits)
+  const exponent = resolveCornerSmoothingExponent(effectiveSmoothing)
+  const cornerDistance = superellipseLength(Math.max(qx, 0), Math.max(qy, 0), exponent)
+
+  return cornerDistance + Math.min(Math.max(qx, qy), 0) - clampedRadius
+}
+
+function superellipseLength(x: number, y: number, exponent: number) {
+  return (Math.abs(x) ** exponent + Math.abs(y) ** exponent) ** (1 / exponent)
+}
+
+function resolveCornerSmoothingExponent(cornerSmoothing: number) {
+  return CIRCULAR_CORNER_EXPONENT + clamp(cornerSmoothing, 0, 1) * CORNER_SMOOTHING_EXPONENT_DELTA
+}
+
+function sdfCoverage(distancePx: number) {
+  return 1 - smoothstepEdges(-SUBMERGED_AREA_AA_PX, SUBMERGED_AREA_AA_PX, distancePx)
+}
+
+function blendInfluenceCoverage(distancePx: number, blendDistancePx: number) {
+  if (blendDistancePx <= SDF_EPSILON) {
+    return sdfCoverage(distancePx)
+  }
+
+  return 1 - smoothstepEdges(-SUBMERGED_AREA_AA_PX, blendDistancePx, distancePx)
+}
+
+function smoothstepEdges(edge0: number, edge1: number, value: number) {
+  if (edge0 === edge1) {
+    return value < edge0 ? 0 : 1
+  }
+
+  const x = clamp((value - edge0) / (edge1 - edge0), 0, 1)
+  return x * x * (3 - 2 * x)
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function getDevicePixelRatio() {
+  return typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1
+}
+
+function samplePointColor(shapeId: ShapeId) {
+  return shapeId === 'left' ? '#75d9ff' : '#ff8cc8'
+}
+
+function colorWithAlpha(hexColor: string, alpha: number) {
+  const red = Number.parseInt(hexColor.slice(1, 3), 16)
+  const green = Number.parseInt(hexColor.slice(3, 5), 16)
+  const blue = Number.parseInt(hexColor.slice(5, 7), 16)
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`
 }
 
 function isNearShapeCorner(point: StagePoint, shape: ShapeState) {
