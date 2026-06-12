@@ -193,8 +193,7 @@ describe('layout UI tree', () => {
     expect(defaultContainer.normalDivergenceBlendMode).toBe('half-chord')
     expect(defaultContainer.exposureBlendSubmergedAreaModulationEnabled).toBe(true)
     expect(defaultContainer.exposureBlendSubmergedAreaMinStrength).toBe(0.1)
-    expect(defaultContainer.exposureBlendSubmergedAreaPeriod).toBe(0.4)
-    expect(defaultContainer.exposureBlendSubmergedAreaSharpness).toBe(2)
+    expect(defaultContainer.exposureBlendSubmergedAreaPeriod).toBe(0.5)
     expect(defaultContainer.exposureBlendSubmergedAreaDelay).toBe(0)
 
     const container = new SceneContainer({
@@ -202,27 +201,23 @@ describe('layout UI tree', () => {
       exposureBlendSubmergedAreaModulationEnabled: false,
       exposureBlendSubmergedAreaMinStrength: 0.2,
       exposureBlendSubmergedAreaPeriod: 0.5,
-      exposureBlendSubmergedAreaSharpness: 3,
       exposureBlendSubmergedAreaDelay: 0.1,
     })
     expect(container.normalDivergenceBlendMode).toBe('angle')
     expect(container.exposureBlendSubmergedAreaModulationEnabled).toBe(false)
     expect(container.exposureBlendSubmergedAreaMinStrength).toBe(0.2)
     expect(container.exposureBlendSubmergedAreaPeriod).toBe(0.5)
-    expect(container.exposureBlendSubmergedAreaSharpness).toBe(3)
     expect(container.exposureBlendSubmergedAreaDelay).toBe(0.1)
 
     container.normalDivergenceBlendMode = 'half-chord'
     container.exposureBlendSubmergedAreaModulationEnabled = true
     container.exposureBlendSubmergedAreaMinStrength = 0.1
     container.exposureBlendSubmergedAreaPeriod = 0.4
-    container.exposureBlendSubmergedAreaSharpness = 2
     container.exposureBlendSubmergedAreaDelay = 0.2
     expect(container.normalDivergenceBlendMode).toBe('half-chord')
     expect(container.exposureBlendSubmergedAreaModulationEnabled).toBe(true)
     expect(container.exposureBlendSubmergedAreaMinStrength).toBe(0.1)
     expect(container.exposureBlendSubmergedAreaPeriod).toBe(0.4)
-    expect(container.exposureBlendSubmergedAreaSharpness).toBe(2)
     expect(container.exposureBlendSubmergedAreaDelay).toBe(0.2)
   })
 
@@ -238,18 +233,16 @@ describe('layout UI tree', () => {
     container.normalDivergenceBlendEnabled = false
     container.exposureBlendSubmergedAreaModulationEnabled = false
     container.exposureBlendSubmergedAreaMinStrength = 0.25
-    container.exposureBlendSubmergedAreaPeriod = 0.5
-    container.exposureBlendSubmergedAreaSharpness = 3
+    container.exposureBlendSubmergedAreaPeriod = 0.6
     container.exposureBlendSubmergedAreaDelay = 0.1
 
     expect(container.sceneNode.normalDivergenceBlendMode).toBe('angle')
     expect(container.sceneNode.normalDivergenceBlendEnabled).toBe(false)
     expect(container.sceneNode.exposureBlendSubmergedAreaModulationEnabled).toBe(false)
     expect(container.sceneNode.exposureBlendSubmergedAreaMinStrength).toBe(0.25)
-    expect(container.sceneNode.exposureBlendSubmergedAreaPeriod).toBe(0.5)
-    expect(container.sceneNode.exposureBlendSubmergedAreaSharpness).toBe(3)
+    expect(container.sceneNode.exposureBlendSubmergedAreaPeriod).toBe(0.6)
     expect(container.sceneNode.exposureBlendSubmergedAreaDelay).toBe(0.1)
-    expect(events).toEqual(['frame', 'frame', 'frame', 'frame', 'frame', 'frame', 'frame'])
+    expect(events).toEqual(['frame', 'frame', 'frame', 'frame', 'frame', 'frame'])
   })
 
   it('stores uniform glass corner radius and smoothing on scene nodes', () => {

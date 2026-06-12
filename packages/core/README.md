@@ -160,7 +160,7 @@ That means a `Glass` must ultimately be nested under a `Container`; it cannot be
 
 | Group | Properties |
 | --- | --- |
-| Shape and fusion | `spacing`, `normalDivergenceBlendMode`, `normalDivergenceBlendEnabled`, `exposureBlendSubmergedAreaModulationEnabled`, `exposureBlendSubmergedAreaMinStrength`, `exposureBlendSubmergedAreaPeriod`, `exposureBlendSubmergedAreaSharpness`, `exposureBlendSubmergedAreaDelay` |
+| Shape and fusion | `spacing`, `normalDivergenceBlendMode`, `normalDivergenceBlendEnabled`, `exposureBlendSubmergedAreaModulationEnabled`, `exposureBlendSubmergedAreaMinStrength`, `exposureBlendSubmergedAreaPeriod`, `exposureBlendSubmergedAreaDelay` |
 | Blur and displacement | `blur`, `bezelWidth`, `displacementFactor`, `displacementBlur`, `debugDisplacement` |
 | Refraction | `thickness`, `ior`, `contentIor`, `contentDepth`, `dispersion`, `surfaceProfile` |
 | Specular and reflection | `lightDirection`, `specularStrength`, `specularWidth`, `specularFalloff`, `oppositeSpecularStrength`, `specularSharpness`, `specularOpacity`, `reflectionOffset` |
@@ -202,8 +202,7 @@ Default values:
 | `debugDisplacement` | `false` |
 | `exposureBlendSubmergedAreaModulationEnabled` | `true` |
 | `exposureBlendSubmergedAreaMinStrength` | `0.1` |
-| `exposureBlendSubmergedAreaPeriod` | `0.4` |
-| `exposureBlendSubmergedAreaSharpness` | `2` |
+| `exposureBlendSubmergedAreaPeriod` | `0.5` |
 | `exposureBlendSubmergedAreaDelay` | `0` |
 | `zIndex` | `0` |
 

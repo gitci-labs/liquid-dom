@@ -64,7 +64,6 @@ export type ContainerInit = Partial<Transform> & {
   exposureBlendSubmergedAreaModulationEnabled?: boolean
   exposureBlendSubmergedAreaMinStrength?: number
   exposureBlendSubmergedAreaPeriod?: number
-  exposureBlendSubmergedAreaSharpness?: number
   exposureBlendSubmergedAreaDelay?: number
   ior?: number
   contentIor?: number
@@ -677,9 +676,7 @@ export class Container implements Transform {
   /** Smooth-union radius multiplier at the strongest submerged-area attenuation. */
   exposureBlendSubmergedAreaMinStrength = 0.1
   /** Period of the blend-influence attenuation curve in normalized area units. */
-  exposureBlendSubmergedAreaPeriod = 0.4
-  /** Sharpness of the blend-influence attenuation curve. */
-  exposureBlendSubmergedAreaSharpness = 2
+  exposureBlendSubmergedAreaPeriod = 0.5
   /** Normalized area delay before blend-influence attenuation starts. */
   exposureBlendSubmergedAreaDelay = 0
   /** Refractive index used for the displacement model. */
@@ -772,9 +769,6 @@ export class Container implements Transform {
     }
     if (options.exposureBlendSubmergedAreaPeriod !== undefined) {
       this.exposureBlendSubmergedAreaPeriod = options.exposureBlendSubmergedAreaPeriod
-    }
-    if (options.exposureBlendSubmergedAreaSharpness !== undefined) {
-      this.exposureBlendSubmergedAreaSharpness = options.exposureBlendSubmergedAreaSharpness
     }
     if (options.exposureBlendSubmergedAreaDelay !== undefined) {
       this.exposureBlendSubmergedAreaDelay = options.exposureBlendSubmergedAreaDelay

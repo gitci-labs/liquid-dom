@@ -274,14 +274,15 @@ fn normalDivergenceForSamples(left: SdfSample, right: SdfSample) -> f32 {
   return normalDivergence;
 }
 
-fn shapedCosine01(value: f32, sharpnessInput: f32) -> f32 {
-  let sharpness = max(sharpnessInput, SDF_EPSILON);
-  let wave = cos(value * SDF_TAU);
-  let shapedWave = sign(wave) * pow(abs(wave), sharpness);
-  return 0.5 + 0.5 * shapedWave;
+fn shapedCosine01(value: f32) -> f32 {
+  return 0.5 + 0.5 * cos(value * SDF_TAU);
 }
 
-fn submergedAreaKScale(left: SdfSample, right: SdfSample) -> f32 {
+fn smoothUnionWeight(left: SdfSample, right: SdfSample, blendDistance: f32) -> f32 {
+  return clamp(0.5 + 0.5 * (right.distance - left.distance) / max(blendDistance, SDF_EPSILON), 0.0, 1.0);
+}
+
+fn submergedAreaKScale(submergedArea: f32) -> f32 {
   if (globals.sdfParams0.x <= 0.5) {
     return 1.0;
   }
@@ -289,9 +290,8 @@ fn submergedAreaKScale(left: SdfSample, right: SdfSample) -> f32 {
   let lowK = clamp(globals.sdfParams0.y, 0.0, 1.0);
   let period = max(globals.sdfParams0.z, SDF_EPSILON);
   let delay = clamp(globals.sdfParams1.x, 0.0, 0.999);
-  let submergedArea = max(left.submergedArea, right.submergedArea);
   let delayedArea = max(submergedArea - delay, 0.0) / max(1.0 - delay, SDF_EPSILON);
-  let curve = shapedCosine01(delayedArea / period, globals.sdfParams0.w);
+  let curve = shapedCosine01(delayedArea * period);
   return mix(lowK, 1.0, curve);
 }
 
@@ -301,18 +301,26 @@ fn smoothUnion(
   smoothing: f32,
   normalDivergence: f32,
 ) -> SdfSample {
-  let kScale = submergedAreaKScale(left, right);
-  let blendDistance = smoothing * normalDivergence * kScale;
+  let baseBlendDistance = smoothing * normalDivergence;
+
+  if (baseBlendDistance <= SDF_EPSILON) {
+    return hardUnion(left, right);
+  }
+
+  let baseH = smoothUnionWeight(left, right, baseBlendDistance);
+  let submergedArea = mix(right.submergedArea, left.submergedArea, baseH);
+  let kScale = submergedAreaKScale(submergedArea);
+  let blendDistance = baseBlendDistance * kScale;
 
   if (blendDistance <= SDF_EPSILON) {
     return hardUnion(left, right);
   }
 
-  let h = clamp(0.5 + 0.5 * (right.distance - left.distance) / blendDistance, 0.0, 1.0);
+  let h = smoothUnionWeight(left, right, blendDistance);
   return SdfSample(
     mix(right.distance, left.distance, h) - blendDistance * h * (1.0 - h),
     normalizeSdfGradient(mix(right.gradient, left.gradient, h)),
-    max(left.submergedArea, right.submergedArea),
+    submergedArea,
   );
 }
 

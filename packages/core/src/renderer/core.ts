@@ -69,7 +69,6 @@ import type {
   SpecularWidth,
   SurfaceProfile,
 } from '../types'
-import { resolveCornerSmoothingExponent } from '../corner-smoothing'
 
 /** Resolves public specular-width semantics into the shader's device-pixel space. */
 export function resolveSpecularWidthPx(specularWidth: SpecularWidth, dpr: number) {
@@ -99,7 +98,19 @@ type PackedShapesResult = {
   bounds: BoundsRect | null
 }
 
+type BoundsPoint = {
+  x: number
+  y: number
+}
+
+type TransformedShapeBounds = {
+  aabb: BoundsRect
+  area: number
+  polygon: BoundsPoint[]
+}
+
 type PackedShapeCpuData = {
+  bounds: TransformedShapeBounds
   contentRange?: {
     count: number
     start: number
@@ -110,7 +121,6 @@ type PackedShapeCpuData = {
   halfWidth: number
   inverse: Matrix2D
   minimumScale: number
-  worldDevice: Matrix2D
 }
 
 type GlobalsBuffer = GpuStructBuffer<GpuStructDefinition<typeof GlobalsLayout>>
@@ -119,9 +129,8 @@ type BackdropMetricsBoundsBuffer = GpuStructBuffer<GpuStructDefinition<typeof Ba
 type HtmlCompositeParamsBuffer = GpuStructBuffer<GpuStructDefinition<typeof HtmlCompositeParamsLayout>>
 const DISPLACEMENT_FIELD_FORMAT = 'rgba16float' satisfies GPUTextureFormat
 const SHADOW_MASK_FORMAT = 'rgba8unorm' satisfies GPUTextureFormat
-const SUBMERGED_AREA_SAMPLE_STEPS = 24
-const SUBMERGED_AREA_AA_PX = 1
 const SDF_EPSILON = 0.0001
+const MAX_EXACT_POLYGON_UNION_COUNT = 8
 
 /** Maps a public surface profile string to the shader enum value. */
 function getSurfaceProfileIndex(profile: SurfaceProfile) {
@@ -146,87 +155,171 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
 
-function smoothstep(edge0: number, edge1: number, value: number) {
-  if (edge0 === edge1) {
-    return value < edge0 ? 0 : 1
+function aabbArea(bounds: BoundsRect) {
+  return Math.max(bounds.maxX - bounds.minX, 0) * Math.max(bounds.maxY - bounds.minY, 0)
+}
+
+function intersectBounds(left: BoundsRect, right: BoundsRect): BoundsRect | null {
+  const intersection = {
+    minX: Math.max(left.minX, right.minX),
+    minY: Math.max(left.minY, right.minY),
+    maxX: Math.min(left.maxX, right.maxX),
+    maxY: Math.min(left.maxY, right.maxY),
   }
 
-  const x = clamp((value - edge0) / (edge1 - edge0), 0, 1)
-  return x * x * (3 - 2 * x)
+  return hasBounds(intersection) ? intersection : null
 }
 
-function sdfCoverage(distancePx: number) {
-  return 1 - smoothstep(-SUBMERGED_AREA_AA_PX, SUBMERGED_AREA_AA_PX, distancePx)
+function cross(ax: number, ay: number, bx: number, by: number) {
+  return ax * by - ay * bx
 }
 
-function blendInfluenceCoverage(distancePx: number, blendDistancePx: number) {
-  if (blendDistancePx <= SDF_EPSILON) {
-    return sdfCoverage(distancePx)
+function polygonSignedArea(points: BoundsPoint[]) {
+  let area = 0
+  for (let index = 0; index < points.length; index += 1) {
+    const current = points[index]
+    const next = points[(index + 1) % points.length]
+    area += current.x * next.y - next.x * current.y
+  }
+  return area * 0.5
+}
+
+function polygonArea(points: BoundsPoint[]) {
+  return Math.abs(polygonSignedArea(points))
+}
+
+function isInsideClipEdge(point: BoundsPoint, edgeStart: BoundsPoint, edgeEnd: BoundsPoint, clipWinding: number) {
+  const edgeCross = cross(
+    edgeEnd.x - edgeStart.x,
+    edgeEnd.y - edgeStart.y,
+    point.x - edgeStart.x,
+    point.y - edgeStart.y,
+  )
+  return clipWinding >= 0 ? edgeCross >= -SDF_EPSILON : edgeCross <= SDF_EPSILON
+}
+
+function intersectLines(
+  lineStart: BoundsPoint,
+  lineEnd: BoundsPoint,
+  clipStart: BoundsPoint,
+  clipEnd: BoundsPoint,
+): BoundsPoint {
+  const lineX = lineEnd.x - lineStart.x
+  const lineY = lineEnd.y - lineStart.y
+  const clipX = clipEnd.x - clipStart.x
+  const clipY = clipEnd.y - clipStart.y
+  const denominator = cross(lineX, lineY, clipX, clipY)
+  if (Math.abs(denominator) <= SDF_EPSILON) {
+    return lineEnd
   }
 
-  return 1 - smoothstep(-SUBMERGED_AREA_AA_PX, blendDistancePx, distancePx)
+  const t = cross(clipStart.x - lineStart.x, clipStart.y - lineStart.y, clipX, clipY) / denominator
+  return {
+    x: lineStart.x + lineX * t,
+    y: lineStart.y + lineY * t,
+  }
 }
 
-function superellipseLength(x: number, y: number, exponent: number) {
-  return (Math.abs(x) ** exponent + Math.abs(y) ** exponent) ** (1 / exponent)
+function clipPolygonToEdge(
+  subject: BoundsPoint[],
+  clipStart: BoundsPoint,
+  clipEnd: BoundsPoint,
+  clipWinding: number,
+) {
+  const output: BoundsPoint[] = []
+  if (subject.length === 0) {
+    return output
+  }
+
+  let previous = subject[subject.length - 1]
+  let previousInside = isInsideClipEdge(previous, clipStart, clipEnd, clipWinding)
+  for (const current of subject) {
+    const currentInside = isInsideClipEdge(current, clipStart, clipEnd, clipWinding)
+    if (currentInside !== previousInside) {
+      output.push(intersectLines(previous, current, clipStart, clipEnd))
+    }
+    if (currentInside) {
+      output.push(current)
+    }
+    previous = current
+    previousInside = currentInside
+  }
+  return output
 }
 
-function shapeLocalDistance(shape: PackedShapeCpuData, localX: number, localY: number) {
-  const cornerLimit = Math.min(shape.halfWidth, shape.halfHeight)
-  const clampedRadius = clamp(shape.cornerRadius, 0, cornerLimit)
-  const centeredX = localX - shape.halfWidth
-  const centeredY = localY - shape.halfHeight
-  const qx = Math.abs(centeredX) - shape.halfWidth + clampedRadius
-  const qy = Math.abs(centeredY) - shape.halfHeight + clampedRadius
-  const maxSmoothingThatFits = shape.cornerRadius > SDF_EPSILON
-    ? Math.max(cornerLimit / Math.max(shape.cornerRadius, SDF_EPSILON) - 1, 0)
-    : 0
-  const effectiveSmoothing = Math.min(clamp(shape.cornerSmoothing, 0, 1), maxSmoothingThatFits)
-  const exponent = resolveCornerSmoothingExponent(effectiveSmoothing)
-  const cornerDistance = superellipseLength(Math.max(qx, 0), Math.max(qy, 0), exponent)
-  return (cornerDistance + Math.min(Math.max(qx, qy), 0) - clampedRadius) * shape.minimumScale
+function intersectConvexPolygons(subject: BoundsPoint[], clip: BoundsPoint[]) {
+  let output = subject
+  const clipWinding = polygonSignedArea(clip)
+  for (let index = 0; index < clip.length && output.length >= 3; index += 1) {
+    output = clipPolygonToEdge(output, clip[index], clip[(index + 1) % clip.length], clipWinding)
+  }
+  return output.length >= 3 ? output : []
 }
 
-function shapeDistanceAtDevicePoint(shape: PackedShapeCpuData, point: { x: number, y: number }) {
-  const local = transformPoint(shape.inverse, point.x, point.y)
-  return shapeLocalDistance(shape, local.x, local.y)
+function polygonUnionArea(polygons: BoundsPoint[][], maxArea: number) {
+  if (polygons.length === 0) {
+    return 0
+  }
+  if (polygons.length > MAX_EXACT_POLYGON_UNION_COUNT) {
+    return Math.min(polygons.reduce((area, polygon) => area + polygonArea(polygon), 0), maxArea)
+  }
+
+  let area = 0
+  const accumulate = (startIndex: number, currentPolygon: BoundsPoint[] | null, subsetSize: number) => {
+    for (let index = startIndex; index < polygons.length; index += 1) {
+      const nextPolygon = currentPolygon
+        ? intersectConvexPolygons(currentPolygon, polygons[index])
+        : polygons[index]
+      const nextArea = polygonArea(nextPolygon)
+      if (nextArea <= SDF_EPSILON) {
+        continue
+      }
+
+      const nextSubsetSize = subsetSize + 1
+      area += nextSubsetSize % 2 === 1 ? nextArea : -nextArea
+      accumulate(index + 1, nextPolygon, nextSubsetSize)
+    }
+  }
+  accumulate(0, null, 0)
+  return Math.min(Math.max(area, 0), maxArea)
 }
 
-function estimateSubmergedAreaPercentages(shapes: PackedShapeCpuData[], blendDistancePx: number) {
+function shapeBoundsFromCorners(corners: BoundsPoint[]): TransformedShapeBounds {
+  const bounds = createEmptyBounds()
+  for (const corner of corners) {
+    expandBounds(bounds, corner.x, corner.y)
+  }
+  return {
+    aabb: bounds,
+    area: polygonArea(corners),
+    polygon: corners,
+  }
+}
+
+function estimateSubmergedAreaPercentagesFromBounds(shapes: PackedShapeCpuData[]) {
   if (shapes.length === 0) {
     return []
   }
 
   return shapes.map((shape, shapeIndex) => {
-    let shapeCoverageSum = 0
-    let blendInfluenceCoverageSum = 0
-
-    for (let yIndex = 0; yIndex < SUBMERGED_AREA_SAMPLE_STEPS; yIndex += 1) {
-      const localY = ((yIndex + 0.5) / SUBMERGED_AREA_SAMPLE_STEPS) * shape.halfHeight * 2
-      for (let xIndex = 0; xIndex < SUBMERGED_AREA_SAMPLE_STEPS; xIndex += 1) {
-        const localX = ((xIndex + 0.5) / SUBMERGED_AREA_SAMPLE_STEPS) * shape.halfWidth * 2
-        const shapeCoverage = sdfCoverage(shapeLocalDistance(shape, localX, localY))
-        if (shapeCoverage <= 0) {
-          continue
-        }
-
-        const devicePoint = transformPoint(shape.worldDevice, localX, localY)
-        const distanceToOtherShape = shapes.reduce((distance, otherShape, otherIndex) => {
-          if (otherIndex === shapeIndex) {
-            return distance
-          }
-          return Math.min(distance, shapeDistanceAtDevicePoint(otherShape, devicePoint))
-        }, Number.POSITIVE_INFINITY)
-
-        shapeCoverageSum += shapeCoverage
-        blendInfluenceCoverageSum += shapeCoverage * blendInfluenceCoverage(distanceToOtherShape, blendDistancePx)
-      }
-    }
-
-    if (shapeCoverageSum <= SDF_EPSILON) {
+    const shapeArea = shape.bounds.area
+    if (shapeArea <= SDF_EPSILON) {
       return 0
     }
-    return clamp(blendInfluenceCoverageSum / shapeCoverageSum, 0, 1)
+
+    const overlaps = shapes.flatMap((otherShape, otherIndex) => {
+      if (otherIndex === shapeIndex) {
+        return []
+      }
+      if (!intersectBounds(shape.bounds.aabb, otherShape.bounds.aabb)) {
+        return []
+      }
+
+      const overlap = intersectConvexPolygons(shape.bounds.polygon, otherShape.bounds.polygon)
+      return polygonArea(overlap) > SDF_EPSILON ? [overlap] : []
+    })
+
+    return clamp(polygonUnionArea(overlaps, shapeArea) / shapeArea, 0, 1)
   })
 }
 
@@ -520,7 +613,6 @@ export class WebGpuGlassCore {
         submergedAreaModulationEnabled: container.exposureBlendSubmergedAreaModulationEnabled ? 1 : 0,
         submergedAreaMinStrength: container.exposureBlendSubmergedAreaMinStrength,
         submergedAreaPeriod: container.exposureBlendSubmergedAreaPeriod,
-        submergedAreaSharpness: container.exposureBlendSubmergedAreaSharpness,
       },
       sdfParams1: {
         submergedAreaDelay: container.exposureBlendSubmergedAreaDelay,
@@ -614,15 +706,15 @@ export class WebGpuGlassCore {
       const topRight = transformPoint(worldDevice, glass.width, 0)
       const bottomLeft = transformPoint(worldDevice, 0, glass.height)
       const bottomRight = transformPoint(worldDevice, glass.width, glass.height)
-      expandBounds(bounds, topLeft.x, topLeft.y)
-      expandBounds(bounds, topRight.x, topRight.y)
-      expandBounds(bounds, bottomLeft.x, bottomLeft.y)
-      expandBounds(bounds, bottomRight.x, bottomRight.y)
+      const shapeBounds = shapeBoundsFromCorners([topLeft, topRight, bottomRight, bottomLeft])
+      expandBounds(bounds, shapeBounds.aabb.minX, shapeBounds.aabb.minY)
+      expandBounds(bounds, shapeBounds.aabb.maxX, shapeBounds.aabb.maxY)
 
       const contentRange = this.contentSource?.getGlassContentRange?.(glass)
       const halfWidth = glass.width * 0.5
       const halfHeight = glass.height * 0.5
       packedShapes.push({
+        bounds: shapeBounds,
         contentRange: contentRange ?? undefined,
         cornerRadius: glass.cornerRadius,
         cornerSmoothing: glass.cornerSmoothing,
@@ -630,14 +722,13 @@ export class WebGpuGlassCore {
         halfWidth,
         inverse,
         minimumScale: getMinimumScale(worldDevice),
-        worldDevice,
       })
 
       activeCount += 1
     }
 
     const submergedAreas = container.exposureBlendSubmergedAreaModulationEnabled
-      ? estimateSubmergedAreaPercentages(packedShapes, container.spacing * dpr)
+      ? estimateSubmergedAreaPercentagesFromBounds(packedShapes)
       : packedShapes.map(() => 0)
 
     packedShapes.forEach((shape, index) => {

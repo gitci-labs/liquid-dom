@@ -15,7 +15,6 @@ export const GlobalsLayout = structLayout({
     'submergedAreaModulationEnabled',
     'submergedAreaMinStrength',
     'submergedAreaPeriod',
-    'submergedAreaSharpness',
   ),
   sdfParams1: vec4('submergedAreaDelay'),
   glass: vec4('thickness', 'displacementFactor', 'ior', 'dispersion'),

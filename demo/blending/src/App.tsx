@@ -19,8 +19,7 @@ const MIN_CONTAINER_SPACING = 0
 const MAX_CONTAINER_SPACING = 160
 const BLEND_INFLUENCE_GATING_ENABLED = true
 const BLEND_INFLUENCE_MIN_K = 0.1
-const BLEND_INFLUENCE_PERIOD = 0.4
-const BLEND_INFLUENCE_SHARPNESS = 2
+const BLEND_INFLUENCE_PERIOD = 0.5
 const BLEND_INFLUENCE_DELAY = 0
 const MIN_BLEND_INFLUENCE_MIN_K = 0
 const MAX_BLEND_INFLUENCE_MIN_K = 1
@@ -28,9 +27,6 @@ const BLEND_INFLUENCE_MIN_K_STEP = 0.01
 const MIN_BLEND_INFLUENCE_PERIOD = 0.01
 const MAX_BLEND_INFLUENCE_PERIOD = 1
 const BLEND_INFLUENCE_PERIOD_STEP = 0.01
-const MIN_BLEND_INFLUENCE_SHARPNESS = 0.1
-const MAX_BLEND_INFLUENCE_SHARPNESS = 8
-const BLEND_INFLUENCE_SHARPNESS_STEP = 0.1
 const MIN_BLEND_INFLUENCE_DELAY = 0
 const MAX_BLEND_INFLUENCE_DELAY = 0.95
 const BLEND_INFLUENCE_DELAY_STEP = 0.01
@@ -45,12 +41,7 @@ const PLOT_WIDTH = 800
 const PLOT_HEIGHT = 240
 const PLOT_MARGIN = { top: 18, right: 18, bottom: 38, left: 48 }
 const PLOT_STEPS = 96
-const SUBMERGED_AREA_SAMPLE_STEPS = 24
-const SUBMERGED_AREA_AA_PX = 1
 const SDF_EPSILON = 0.0001
-const DEFAULT_CORNER_SMOOTHING = 0.6
-const CIRCULAR_CORNER_EXPONENT = 2
-const CORNER_SMOOTHING_EXPONENT_DELTA = (4 - CIRCULAR_CORNER_EXPONENT) / DEFAULT_CORNER_SMOOTHING
 const NORMAL_GATING_OPTIONS = [
   { value: 'half-chord', label: 'Half-chord' },
   { value: 'angle', label: 'Angle' },
@@ -78,11 +69,17 @@ type StageSize = {
   height: number
 }
 
-type SamplePoint = StagePoint & {
-  id: string
-  coverage: number
-  influence: number
-  shapeId: ShapeId
+type BoundsRect = {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+}
+
+type TransformedShapeBounds = {
+  aabb: BoundsRect
+  area: number
+  polygon: StagePoint[]
 }
 
 type InteractionState =
@@ -137,9 +134,8 @@ export default function App() {
   const [blendInfluenceGatingEnabled, setBlendInfluenceGatingEnabled] = useState(BLEND_INFLUENCE_GATING_ENABLED)
   const [blendInfluenceMinK, setBlendInfluenceMinK] = useState(BLEND_INFLUENCE_MIN_K)
   const [blendInfluencePeriod, setBlendInfluencePeriod] = useState(BLEND_INFLUENCE_PERIOD)
-  const [blendInfluenceSharpness, setBlendInfluenceSharpness] = useState(BLEND_INFLUENCE_SHARPNESS)
   const [blendInfluenceDelay, setBlendInfluenceDelay] = useState(BLEND_INFLUENCE_DELAY)
-  const [samplePointsVisible, setSamplePointsVisible] = useState(false)
+  const [boundsVisible, setBoundsVisible] = useState(false)
   const [stageSize, setStageSize] = useState<StageSize>({ width: 0, height: 0 })
   const [blendingDistance, setBlendingDistance] = useState(CONTAINER_SPACING)
   const [hoveredGatingCurve, setHoveredGatingCurve] = useState<NormalDivergenceBlendMode | null>(null)
@@ -277,7 +273,6 @@ export default function App() {
                   exposureBlendSubmergedAreaModulationEnabled={blendInfluenceGatingEnabled}
                   exposureBlendSubmergedAreaMinStrength={blendInfluenceMinK}
                   exposureBlendSubmergedAreaPeriod={blendInfluencePeriod}
-                  exposureBlendSubmergedAreaSharpness={blendInfluenceSharpness}
                   exposureBlendSubmergedAreaDelay={blendInfluenceDelay}
                   bezelWidth={18}
                   displacementBlur={8}
@@ -309,9 +304,8 @@ export default function App() {
               </Frame>
             </ZStack>
           </LiquidCanvas>
-          {samplePointsVisible && stageSize.width > 0 && stageSize.height > 0 && (
-            <SamplePointsOverlay
-              blendDistance={blendingDistance}
+          {boundsVisible && stageSize.width > 0 && stageSize.height > 0 && (
+            <BoundsOverlay
               opacity={SAMPLE_VISUALIZATION_OPACITY}
               shapes={shapes}
               stageSize={stageSize}
@@ -365,13 +359,13 @@ export default function App() {
               Blend influence
             </button>
             <button
-              aria-pressed={samplePointsVisible}
-              className={`blending-toggle ${samplePointsVisible ? 'active' : ''}`}
+              aria-pressed={boundsVisible}
+              className={`blending-toggle ${boundsVisible ? 'active' : ''}`}
               type="button"
-              onClick={() => setSamplePointsVisible((visible) => !visible)}
+              onClick={() => setBoundsVisible((visible) => !visible)}
             >
               <span className="blending-toggle-checkbox" aria-hidden="true" />
-              Sample points
+              Bounds
             </button>
             <label className="blending-distance-control">
               <span>Blending distance</span>
@@ -409,7 +403,6 @@ export default function App() {
           delay={blendInfluenceDelay}
           minK={blendInfluenceMinK}
           period={blendInfluencePeriod}
-          sharpness={blendInfluenceSharpness}
         />
         <div className="blending-parameter-controls">
           <ScalarSlider
@@ -427,14 +420,6 @@ export default function App() {
             step={BLEND_INFLUENCE_PERIOD_STEP}
             value={blendInfluencePeriod}
             onChange={setBlendInfluencePeriod}
-          />
-          <ScalarSlider
-            label="Sharpness"
-            max={MAX_BLEND_INFLUENCE_SHARPNESS}
-            min={MIN_BLEND_INFLUENCE_SHARPNESS}
-            step={BLEND_INFLUENCE_SHARPNESS_STEP}
-            value={blendInfluenceSharpness}
-            onChange={setBlendInfluenceSharpness}
           />
           <ScalarSlider
             label="Delay"
@@ -455,14 +440,13 @@ type GatingPlotProps = {
   onHoveredCurveChange: (curve: NormalDivergenceBlendMode | null) => void
 }
 
-type SamplePointsOverlayProps = {
-  blendDistance: number
+type BoundsOverlayProps = {
   opacity: number
   shapes: ShapeState[]
   stageSize: StageSize
 }
 
-function SamplePointsOverlay({ blendDistance, opacity, shapes, stageSize }: SamplePointsOverlayProps) {
+function BoundsOverlay({ opacity, shapes, stageSize }: BoundsOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
   useEffect(() => {
@@ -491,28 +475,63 @@ function SamplePointsOverlay({ blendDistance, opacity, shapes, stageSize }: Samp
     context.scale(dpr, dpr)
     context.translate(stageSize.width * 0.5, stageSize.height * 0.5)
 
-    for (const sample of createSubmersionSamplePoints(shapes, blendDistance, dpr)) {
-      const influenced = sample.influence > 0.001
-      const radius = influenced ? 0.95 + sample.influence * 1.35 : 0.9
-      const opacity = Math.min(0.9, 0.24 + sample.coverage * 0.2 + sample.influence * 0.46)
+    const shapeBounds = shapes.map((shape) => ({
+      bounds: shapeBoundsFromState(shape),
+      shape,
+    }))
 
-      context.beginPath()
-      context.arc(sample.x, sample.y, radius, 0, Math.PI * 2)
-      context.fillStyle = colorWithAlpha(influenced ? '#ffe45c' : samplePointColor(sample.shapeId), opacity)
-      context.fill()
-      context.strokeStyle = 'rgba(0, 0, 0, 0.42)'
-      context.lineWidth = 0.5
-      context.stroke()
+    for (const { bounds } of shapeBounds) {
+      for (const other of shapeBounds) {
+        if (other.bounds === bounds) {
+          continue
+        }
+        if (!intersectBounds(bounds.aabb, other.bounds.aabb)) {
+          continue
+        }
+        const overlap = intersectConvexPolygons(bounds.polygon, other.bounds.polygon)
+        if (polygonArea(overlap) <= SDF_EPSILON) {
+          continue
+        }
+        drawPolygon(context, overlap, {
+          fill: colorWithAlpha('#ffe45c', 0.28),
+          stroke: colorWithAlpha('#ffe45c', 0.72),
+          width: 1,
+        })
+      }
+    }
+
+    for (const { bounds, shape } of shapeBounds) {
+      const submergedArea = estimateBoundsSubmersion(shapeBounds, shape.id)
+      drawPolygon(context, bounds.polygon, {
+        stroke: colorWithAlpha(shapeColor(shape.id), 0.94),
+        width: 2,
+      })
+
+      context.fillStyle = colorWithAlpha('#ffffff', 0.9)
+      context.strokeStyle = colorWithAlpha('#000000', 0.5)
+      context.lineWidth = 3
+      context.font = '600 12px Inter, ui-sans-serif, system-ui, sans-serif'
+      context.textAlign = 'left'
+      context.textBaseline = 'top'
+      const label = `${Math.round(submergedArea * 100)}%`
+      const labelX = -shape.width * 0.5 + 8
+      const labelY = -shape.height * 0.5 + 8
+      context.save()
+      context.translate(shape.x, shape.y)
+      context.rotate(shape.rotation)
+      context.strokeText(label, labelX, labelY)
+      context.fillText(label, labelX, labelY)
+      context.restore()
     }
 
     context.restore()
-  }, [blendDistance, shapes, stageSize])
+  }, [shapes, stageSize])
 
   return (
     <canvas
       ref={canvasRef}
       aria-hidden="true"
-      className="blending-sample-overlay"
+      className="blending-bounds-overlay"
       style={{ opacity }}
     />
   )
@@ -617,14 +636,13 @@ type BlendInfluenceKPlotProps = {
   delay: number
   minK: number
   period: number
-  sharpness: number
 }
 
-function BlendInfluenceKPlot({ delay, minK, period, sharpness }: BlendInfluenceKPlotProps) {
+function BlendInfluenceKPlot({ delay, minK, period }: BlendInfluenceKPlotProps) {
   const lowK = clamp01(minK)
   const yMax = 1
   const path = createBlendInfluenceKPath((influence) => (
-    blendInfluenceKScale(influence, lowK, period, sharpness, delay)
+    blendInfluenceKScale(influence, lowK, period, delay)
   ), yMax)
   const xTicks = [0, 0.25, 0.5, 0.75, 1]
   const yTicks = [0, yMax * 0.25, yMax * 0.5, yMax * 0.75, yMax]
@@ -730,16 +748,14 @@ function createBlendInfluenceKPath(resolveK: (influence: number) => number, yMax
   }).join(' ')
 }
 
-function blendInfluenceKScale(influence: number, lowK: number, period: number, sharpness: number, delay: number) {
+function blendInfluenceKScale(influence: number, lowK: number, period: number, delay: number) {
   const delayedInfluence = Math.max(influence - delay, 0) / Math.max(1 - delay, SDF_EPSILON)
-  const curve = shapedCosine01(delayedInfluence / Math.max(period, SDF_EPSILON), sharpness)
+  const curve = shapedCosine01(delayedInfluence * Math.max(period, SDF_EPSILON))
   return lowK + (1 - lowK) * curve
 }
 
-function shapedCosine01(value: number, sharpness: number) {
-  const wave = Math.cos(value * Math.PI * 2)
-  const shapedWave = Math.sign(wave) * Math.abs(wave) ** Math.max(sharpness, SDF_EPSILON)
-  return 0.5 + 0.5 * shapedWave
+function shapedCosine01(value: number) {
+  return 0.5 + 0.5 * Math.cos(value * Math.PI * 2)
 }
 
 function plotX(angle: number) {
@@ -771,48 +787,6 @@ function formatParameterValue(value: number, step: number) {
   return step >= 0.1 ? value.toFixed(1) : value.toFixed(2)
 }
 
-function createSubmersionSamplePoints(shapes: ShapeState[], blendDistance: number, dpr: number): SamplePoint[] {
-  if (shapes.length === 0) {
-    return []
-  }
-
-  const blendDistancePx = blendDistance * dpr
-  return shapes.flatMap((shape, shapeIndex) => {
-    const samples: SamplePoint[] = []
-
-    for (let yIndex = 0; yIndex < SUBMERGED_AREA_SAMPLE_STEPS; yIndex += 1) {
-      const localY = ((yIndex + 0.5) / SUBMERGED_AREA_SAMPLE_STEPS) * shape.height
-      for (let xIndex = 0; xIndex < SUBMERGED_AREA_SAMPLE_STEPS; xIndex += 1) {
-        const localX = ((xIndex + 0.5) / SUBMERGED_AREA_SAMPLE_STEPS) * shape.width
-        const shapeCoverage = sdfCoverage(shapeLocalDistanceFromTopLeft(shape, localX, localY) * dpr)
-        if (shapeCoverage <= 0) {
-          continue
-        }
-
-        const stagePoint = shapeLocalPointToStagePoint(shape, localX, localY)
-        const otherDistancePx = shapes.reduce((distance, otherShape, otherIndex) => {
-          if (otherIndex === shapeIndex) {
-            return distance
-          }
-          return Math.min(distance, shapeDistanceAtStagePoint(otherShape, stagePoint) * dpr)
-        }, Number.POSITIVE_INFINITY)
-        const influence = blendInfluenceCoverage(otherDistancePx, blendDistancePx)
-
-        samples.push({
-          id: `${shape.id}-${xIndex}-${yIndex}`,
-          x: stagePoint.x,
-          y: stagePoint.y,
-          coverage: shapeCoverage,
-          influence,
-          shapeId: shape.id,
-        })
-      }
-    }
-
-    return samples
-  })
-}
-
 function shapeLocalPointToStagePoint(shape: ShapeState, localX: number, localY: number): StagePoint {
   const centeredX = localX - shape.width * 0.5
   const centeredY = localY - shape.height * 0.5
@@ -823,72 +797,225 @@ function shapeLocalPointToStagePoint(shape: ShapeState, localX: number, localY: 
   }
 }
 
-function shapeDistanceAtStagePoint(shape: ShapeState, point: StagePoint) {
-  const local = stagePointToShapeLocal(point, shape)
-  return shapeLocalDistanceFromTopLeft(
-    shape,
-    local.x + shape.width * 0.5,
-    local.y + shape.height * 0.5,
-  )
-}
-
-function shapeLocalDistanceFromTopLeft(shape: ShapeState, localX: number, localY: number) {
-  const halfWidth = shape.width * 0.5
-  const halfHeight = shape.height * 0.5
-  const cornerLimit = Math.min(halfWidth, halfHeight)
-  const clampedRadius = clamp(GLASS_CORNER_RADIUS, 0, cornerLimit)
-  const centeredX = localX - halfWidth
-  const centeredY = localY - halfHeight
-  const qx = Math.abs(centeredX) - halfWidth + clampedRadius
-  const qy = Math.abs(centeredY) - halfHeight + clampedRadius
-  const maxSmoothingThatFits = GLASS_CORNER_RADIUS > SDF_EPSILON
-    ? Math.max(cornerLimit / Math.max(GLASS_CORNER_RADIUS, SDF_EPSILON) - 1, 0)
-    : 0
-  const effectiveSmoothing = Math.min(clamp(DEFAULT_CORNER_SMOOTHING, 0, 1), maxSmoothingThatFits)
-  const exponent = resolveCornerSmoothingExponent(effectiveSmoothing)
-  const cornerDistance = superellipseLength(Math.max(qx, 0), Math.max(qy, 0), exponent)
-
-  return cornerDistance + Math.min(Math.max(qx, qy), 0) - clampedRadius
-}
-
-function superellipseLength(x: number, y: number, exponent: number) {
-  return (Math.abs(x) ** exponent + Math.abs(y) ** exponent) ** (1 / exponent)
-}
-
-function resolveCornerSmoothingExponent(cornerSmoothing: number) {
-  return CIRCULAR_CORNER_EXPONENT + clamp(cornerSmoothing, 0, 1) * CORNER_SMOOTHING_EXPONENT_DELTA
-}
-
-function sdfCoverage(distancePx: number) {
-  return 1 - smoothstepEdges(-SUBMERGED_AREA_AA_PX, SUBMERGED_AREA_AA_PX, distancePx)
-}
-
-function blendInfluenceCoverage(distancePx: number, blendDistancePx: number) {
-  if (blendDistancePx <= SDF_EPSILON) {
-    return sdfCoverage(distancePx)
-  }
-
-  return 1 - smoothstepEdges(-SUBMERGED_AREA_AA_PX, blendDistancePx, distancePx)
-}
-
-function smoothstepEdges(edge0: number, edge1: number, value: number) {
-  if (edge0 === edge1) {
-    return value < edge0 ? 0 : 1
-  }
-
-  const x = clamp((value - edge0) / (edge1 - edge0), 0, 1)
-  return x * x * (3 - 2 * x)
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max)
-}
-
 function getDevicePixelRatio() {
   return typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1
 }
 
-function samplePointColor(shapeId: ShapeId) {
+type ShapeBoundsEntry = {
+  bounds: TransformedShapeBounds
+  shape: ShapeState
+}
+
+function shapeBoundsFromState(shape: ShapeState): TransformedShapeBounds {
+  const polygon = [
+    shapeLocalPointToStagePoint(shape, 0, 0),
+    shapeLocalPointToStagePoint(shape, shape.width, 0),
+    shapeLocalPointToStagePoint(shape, shape.width, shape.height),
+    shapeLocalPointToStagePoint(shape, 0, shape.height),
+  ]
+  return {
+    aabb: aabbFromPoints(polygon),
+    area: polygonArea(polygon),
+    polygon,
+  }
+}
+
+function aabbFromPoints(points: StagePoint[]): BoundsRect {
+  return points.reduce<BoundsRect>((bounds, point) => ({
+    minX: Math.min(bounds.minX, point.x),
+    minY: Math.min(bounds.minY, point.y),
+    maxX: Math.max(bounds.maxX, point.x),
+    maxY: Math.max(bounds.maxY, point.y),
+  }), {
+    minX: Number.POSITIVE_INFINITY,
+    minY: Number.POSITIVE_INFINITY,
+    maxX: Number.NEGATIVE_INFINITY,
+    maxY: Number.NEGATIVE_INFINITY,
+  })
+}
+
+function aabbArea(bounds: BoundsRect) {
+  return Math.max(bounds.maxX - bounds.minX, 0) * Math.max(bounds.maxY - bounds.minY, 0)
+}
+
+function intersectBounds(left: BoundsRect, right: BoundsRect): BoundsRect | null {
+  const intersection = {
+    minX: Math.max(left.minX, right.minX),
+    minY: Math.max(left.minY, right.minY),
+    maxX: Math.min(left.maxX, right.maxX),
+    maxY: Math.min(left.maxY, right.maxY),
+  }
+  return aabbArea(intersection) > SDF_EPSILON ? intersection : null
+}
+
+function cross(ax: number, ay: number, bx: number, by: number) {
+  return ax * by - ay * bx
+}
+
+function polygonSignedArea(points: StagePoint[]) {
+  let area = 0
+  for (let index = 0; index < points.length; index += 1) {
+    const current = points[index]
+    const next = points[(index + 1) % points.length]
+    area += current.x * next.y - next.x * current.y
+  }
+  return area * 0.5
+}
+
+function polygonArea(points: StagePoint[]) {
+  return Math.abs(polygonSignedArea(points))
+}
+
+function isInsideClipEdge(point: StagePoint, edgeStart: StagePoint, edgeEnd: StagePoint, clipWinding: number) {
+  const edgeCross = cross(
+    edgeEnd.x - edgeStart.x,
+    edgeEnd.y - edgeStart.y,
+    point.x - edgeStart.x,
+    point.y - edgeStart.y,
+  )
+  return clipWinding >= 0 ? edgeCross >= -SDF_EPSILON : edgeCross <= SDF_EPSILON
+}
+
+function intersectLines(
+  lineStart: StagePoint,
+  lineEnd: StagePoint,
+  clipStart: StagePoint,
+  clipEnd: StagePoint,
+): StagePoint {
+  const lineX = lineEnd.x - lineStart.x
+  const lineY = lineEnd.y - lineStart.y
+  const clipX = clipEnd.x - clipStart.x
+  const clipY = clipEnd.y - clipStart.y
+  const denominator = cross(lineX, lineY, clipX, clipY)
+  if (Math.abs(denominator) <= SDF_EPSILON) {
+    return lineEnd
+  }
+
+  const t = cross(clipStart.x - lineStart.x, clipStart.y - lineStart.y, clipX, clipY) / denominator
+  return {
+    x: lineStart.x + lineX * t,
+    y: lineStart.y + lineY * t,
+  }
+}
+
+function clipPolygonToEdge(subject: StagePoint[], clipStart: StagePoint, clipEnd: StagePoint, clipWinding: number) {
+  const output: StagePoint[] = []
+  if (subject.length === 0) {
+    return output
+  }
+
+  let previous = subject[subject.length - 1]
+  let previousInside = isInsideClipEdge(previous, clipStart, clipEnd, clipWinding)
+  for (const current of subject) {
+    const currentInside = isInsideClipEdge(current, clipStart, clipEnd, clipWinding)
+    if (currentInside !== previousInside) {
+      output.push(intersectLines(previous, current, clipStart, clipEnd))
+    }
+    if (currentInside) {
+      output.push(current)
+    }
+    previous = current
+    previousInside = currentInside
+  }
+  return output
+}
+
+function intersectConvexPolygons(subject: StagePoint[], clip: StagePoint[]) {
+  let output = subject
+  const clipWinding = polygonSignedArea(clip)
+  for (let index = 0; index < clip.length && output.length >= 3; index += 1) {
+    output = clipPolygonToEdge(output, clip[index], clip[(index + 1) % clip.length], clipWinding)
+  }
+  return output.length >= 3 ? output : []
+}
+
+function polygonUnionArea(polygons: StagePoint[][], maxArea: number) {
+  if (polygons.length === 0) {
+    return 0
+  }
+  if (polygons.length > 8) {
+    return Math.min(polygons.reduce((area, polygon) => area + polygonArea(polygon), 0), maxArea)
+  }
+
+  let area = 0
+  const accumulate = (startIndex: number, currentPolygon: StagePoint[] | null, subsetSize: number) => {
+    for (let index = startIndex; index < polygons.length; index += 1) {
+      const nextPolygon = currentPolygon
+        ? intersectConvexPolygons(currentPolygon, polygons[index])
+        : polygons[index]
+      const nextArea = polygonArea(nextPolygon)
+      if (nextArea <= SDF_EPSILON) {
+        continue
+      }
+
+      const nextSubsetSize = subsetSize + 1
+      area += nextSubsetSize % 2 === 1 ? nextArea : -nextArea
+      accumulate(index + 1, nextPolygon, nextSubsetSize)
+    }
+  }
+  accumulate(0, null, 0)
+  return Math.min(Math.max(area, 0), maxArea)
+}
+
+function estimateBoundsSubmersion(entries: ShapeBoundsEntry[], shapeId: ShapeId) {
+  const entry = entries.find((candidate) => candidate.shape.id === shapeId)
+  if (!entry) {
+    return 0
+  }
+
+  const shapeArea = entry.bounds.area
+  if (shapeArea <= SDF_EPSILON) {
+    return 0
+  }
+
+  const overlaps = entries.flatMap((other) => {
+    if (other.shape.id === shapeId) {
+      return []
+    }
+    if (!intersectBounds(entry.bounds.aabb, other.bounds.aabb)) {
+      return []
+    }
+
+    const overlap = intersectConvexPolygons(entry.bounds.polygon, other.bounds.polygon)
+    return polygonArea(overlap) > SDF_EPSILON ? [overlap] : []
+  })
+
+  return clamp01(polygonUnionArea(overlaps, shapeArea) / shapeArea)
+}
+
+function drawPolygon(
+  context: CanvasRenderingContext2D,
+  polygon: StagePoint[],
+  options: {
+    fill?: string
+    stroke?: string
+    width?: number
+  },
+) {
+  if (polygon.length < 3 || polygonArea(polygon) <= SDF_EPSILON) {
+    return
+  }
+
+  context.save()
+  context.beginPath()
+  context.moveTo(polygon[0].x, polygon[0].y)
+  for (let index = 1; index < polygon.length; index += 1) {
+    context.lineTo(polygon[index].x, polygon[index].y)
+  }
+  context.closePath()
+  if (options.fill) {
+    context.fillStyle = options.fill
+    context.fill()
+  }
+  if (options.stroke) {
+    context.strokeStyle = options.stroke
+    context.lineWidth = options.width ?? 1
+    context.stroke()
+  }
+  context.restore()
+}
+
+function shapeColor(shapeId: ShapeId) {
   return shapeId === 'left' ? '#75d9ff' : '#ff8cc8'
 }
 

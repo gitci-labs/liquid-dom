@@ -450,7 +450,6 @@ describe('React layout components', () => {
           exposureBlendSubmergedAreaModulationEnabled={false}
           exposureBlendSubmergedAreaMinStrength={0.2}
           exposureBlendSubmergedAreaPeriod={0.5}
-          exposureBlendSubmergedAreaSharpness={3}
           exposureBlendSubmergedAreaDelay={0.1}
         >
           <Glass>
@@ -464,7 +463,6 @@ describe('React layout components', () => {
     expect(containerRef.current?.exposureBlendSubmergedAreaModulationEnabled).toBe(false)
     expect(containerRef.current?.exposureBlendSubmergedAreaMinStrength).toBe(0.2)
     expect(containerRef.current?.exposureBlendSubmergedAreaPeriod).toBe(0.5)
-    expect(containerRef.current?.exposureBlendSubmergedAreaSharpness).toBe(3)
     expect(containerRef.current?.exposureBlendSubmergedAreaDelay).toBe(0.1)
 
     await view.rerender(
@@ -476,7 +474,6 @@ describe('React layout components', () => {
           exposureBlendSubmergedAreaModulationEnabled={true}
           exposureBlendSubmergedAreaMinStrength={0.1}
           exposureBlendSubmergedAreaPeriod={0.4}
-          exposureBlendSubmergedAreaSharpness={2}
           exposureBlendSubmergedAreaDelay={0.2}
         >
           <Glass>
@@ -491,7 +488,6 @@ describe('React layout components', () => {
     expect(containerRef.current?.exposureBlendSubmergedAreaModulationEnabled).toBe(true)
     expect(containerRef.current?.exposureBlendSubmergedAreaMinStrength).toBe(0.1)
     expect(containerRef.current?.exposureBlendSubmergedAreaPeriod).toBe(0.4)
-    expect(containerRef.current?.exposureBlendSubmergedAreaSharpness).toBe(2)
     expect(containerRef.current?.exposureBlendSubmergedAreaDelay).toBe(0.2)
 
     await view.rerender(
@@ -503,7 +499,6 @@ describe('React layout components', () => {
           exposureBlendSubmergedAreaModulationEnabled={false}
           exposureBlendSubmergedAreaMinStrength={0.3}
           exposureBlendSubmergedAreaPeriod={0.6}
-          exposureBlendSubmergedAreaSharpness={4}
           exposureBlendSubmergedAreaDelay={0.05}
         >
           <Glass>
@@ -518,7 +513,6 @@ describe('React layout components', () => {
     expect(containerRef.current?.exposureBlendSubmergedAreaModulationEnabled).toBe(false)
     expect(containerRef.current?.exposureBlendSubmergedAreaMinStrength).toBe(0.3)
     expect(containerRef.current?.exposureBlendSubmergedAreaPeriod).toBe(0.6)
-    expect(containerRef.current?.exposureBlendSubmergedAreaSharpness).toBe(4)
     expect(containerRef.current?.exposureBlendSubmergedAreaDelay).toBe(0.05)
   })
 

@@ -1028,16 +1028,6 @@ export class GlassContainer extends SingleChildUiNode<LayoutNode, SceneContainer
     }
   }
 
-  get exposureBlendSubmergedAreaSharpness(): number {
-    return this.sceneNode.exposureBlendSubmergedAreaSharpness
-  }
-
-  set exposureBlendSubmergedAreaSharpness(value: number) {
-    if (setProperty(this.sceneNode, 'exposureBlendSubmergedAreaSharpness', value)) {
-      this.invalidateFrame('exposureBlendSubmergedAreaSharpness')
-    }
-  }
-
   get exposureBlendSubmergedAreaDelay(): number {
     return this.sceneNode.exposureBlendSubmergedAreaDelay
   }
