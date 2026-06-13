@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -14,11 +15,12 @@ import {
   Frame,
   Glass,
   GlassContainer,
-  Html,
-  LiquidCanvas,
+  LiquidScene,
   Transform,
   ZStack,
+  type LiquidSceneRef,
 } from '@liquid-dom/react'
+import { BlendingWebGpuCanvas, type StageSize } from './BlendingWebGpuCanvas'
 
 const GLASS_WIDTH = 220
 const GLASS_HEIGHT = 132
@@ -41,7 +43,6 @@ const EDGE_HIT_SIZE = 16
 const MIN_GLASS_WIDTH = 88
 const MIN_GLASS_HEIGHT = 64
 const INITIAL_DISTANCE = 34
-const BACKGROUND_BRIGHTNESS = 0.7
 const PLOT_WIDTH = 800
 const PLOT_HEIGHT = 240
 const PLOT_MARGIN = { top: 18, right: 18, bottom: 18, left: 18 }
@@ -62,11 +63,6 @@ type ShapeState = {
 type StagePoint = {
   x: number
   y: number
-}
-
-type StageSize = {
-  width: number
-  height: number
 }
 
 type BlendingControls = {
@@ -149,6 +145,8 @@ const normalGatePlotControl = createPlugin<
 
 export default function App() {
   const stageRef = useRef<HTMLDivElement | null>(null)
+  const sceneRef = useRef<LiquidSceneRef | null>(null)
+  const requestRenderRef = useRef<() => void>(() => undefined)
   const interactionRef = useRef<InteractionState | null>(null)
   const [shapes, setShapes] = useState(INITIAL_SHAPES)
   const [{
@@ -210,6 +208,9 @@ export default function App() {
   }), []) as unknown as [BlendingPanelValues, (values: Partial<BlendingPanelValues>) => void]
   const [stageSize, setStageSize] = useState<StageSize>({ width: 0, height: 0 })
   const [hoverPoint, setHoverPoint] = useState<StagePoint | null>(null)
+  const requestSceneRender = useCallback(() => {
+    requestRenderRef.current()
+  }, [])
 
   useEffect(() => {
     const element = stageRef.current
@@ -243,6 +244,19 @@ export default function App() {
       },
     })
   }, [normalGatingHermiteCap, normalGatingHermiteKnee, setControls])
+
+  useEffect(() => {
+    requestSceneRender()
+  }, [
+    blendSupportGatingEnabled,
+    blendingDistance,
+    cornerRadius,
+    normalGatingEnabled,
+    normalGatingHermiteCap,
+    normalGatingHermiteKnee,
+    requestSceneRender,
+    shapes,
+  ])
 
   function getStagePoint(event: ReactPointerEvent<HTMLElement>): StagePoint {
     const bounds = stageRef.current?.getBoundingClientRect()
@@ -362,16 +376,17 @@ export default function App() {
           onPointerMove={updateHoverPoint}
           onPointerLeave={clearHoverPoint}
         >
-          <LiquidCanvas className="blending-canvas-shell" canvasClassName="blending-canvas">
+          <BlendingWebGpuCanvas
+            requestRenderRef={requestRenderRef}
+            sceneRef={sceneRef}
+            stageSize={stageSize}
+          />
+          <LiquidScene
+            ref={sceneRef}
+            onInvalidateFrame={requestSceneRender}
+            onInvalidateLayout={requestSceneRender}
+          >
             <ZStack alignment="center">
-              <Html zIndex={-1} sizing="fill">
-                <img
-                  alt=""
-                  className="blending-background-image"
-                  src="/assets/background.jpg"
-                  style={{ filter: `brightness(${BACKGROUND_BRIGHTNESS})` }}
-                />
-              </Html>
               <Frame maxWidth={Infinity} maxHeight={Infinity}>
                 <GlassContainer
                   blur={7}
@@ -411,7 +426,7 @@ export default function App() {
                 </GlassContainer>
               </Frame>
             </ZStack>
-          </LiquidCanvas>
+          </LiquidScene>
           {boundsVisible && stageSize.width > 0 && stageSize.height > 0 && (
             <BoundsOverlay
               blendingDistance={blendingDistance}
