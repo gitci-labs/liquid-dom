@@ -1,31 +1,27 @@
+import * as sdfUtilsValues from './sdf-utils'
+import type {
+  BoundsRect as SdfUtilsBoundsRect,
+  SdfSample as SdfUtilsSdfSample,
+  ShapeSubmergedAreas as SdfUtilsShapeSubmergedAreas,
+  ShapeSubmersionEntry as SdfUtilsShapeSubmersionEntry,
+  TransformedShapeBounds as SdfUtilsTransformedShapeBounds,
+} from './sdf-utils'
+
 export { GlassPointerEvent } from './events'
 export { Glass, Html, Container, Group, StackingContext, Scene } from './scene'
 export { Renderer, WebGpuGlassCore, WebGpuDomContentSource, resolveSpecularWidthPx } from './renderer'
 export {
   DEFAULT_NORMAL_GATING,
-  SDF_EPSILON,
-  aabbArea,
-  aabbFromPoints,
-  clamp01,
-  createEmptySubmergedAreas,
-  estimateCellSubmersion,
-  estimateShapeCellSubmersions,
-  estimateSubmergedAreaPercentagesFromBounds,
-  hermiteCapGate,
-  intersectBounds,
-  intersectConvexPolygons,
-  lerp,
-  normalGateForNormals,
-  polygonArea,
-  polygonSignedArea,
-  polygonUnionArea,
   resolveNormalGating,
-  sameNormalGating,
-  shapeSubmergedAreaAtCenteredLocal,
-  shapeSubmergedAreaAtLocal,
-  smoothUnionGatingInfo,
-  smoothUnionWeight,
 } from './sdf'
+export const sdfUtils = sdfUtilsValues
+export namespace sdfUtils {
+  export type BoundsRect = SdfUtilsBoundsRect
+  export type SdfSample = SdfUtilsSdfSample
+  export type ShapeSubmergedAreas = SdfUtilsShapeSubmergedAreas
+  export type ShapeSubmersionEntry = SdfUtilsShapeSubmersionEntry
+  export type TransformedShapeBounds = SdfUtilsTransformedShapeBounds
+}
 export type { GlassPointerEventInit, GlassPointerEventType } from './events'
 export type {
   WebGpuDomContentSourceInit,
@@ -45,10 +41,4 @@ export type {
   NormalGating,
   NormalGatingOptions,
   ResolvedNormalGating,
-  SdfSample,
-  BoundsRect,
-  ShapeSubmergedAreas,
-  ShapeSubmergedAreasOf,
-  ShapeSubmersionEntry,
-  TransformedShapeBounds,
 } from './sdf'

@@ -160,7 +160,7 @@ That means a `Glass` must ultimately be nested under a `Container`; it cannot be
 
 | Group | Properties |
 | --- | --- |
-| Shape and fusion | `spacing`, `normalGating`, `submersionGating` |
+| Shape and fusion | `spacing`, `normalGating`, `blendSupportGating` |
 | Blur and displacement | `blur`, `bezelWidth`, `displacementFactor`, `displacementBlur`, `debugDisplacement` |
 | Refraction | `thickness`, `ior`, `contentIor`, `contentDepth`, `dispersion`, `surfaceProfile` |
 | Specular and reflection | `lightDirection`, `specularStrength`, `specularWidth`, `specularFalloff`, `oppositeSpecularStrength`, `specularSharpness`, `specularOpacity`, `reflectionOffset` |
@@ -199,7 +199,7 @@ Default values:
 | `shadowBlur` | `24` |
 | `shadowSpread` | `0` |
 | `debugDisplacement` | `false` |
-| `submersionGating` | `true` |
+| `blendSupportGating` | `true` |
 | `zIndex` | `0` |
 
 `specularWidth` accepts a CSS pixel number or `'hairline'`. Numeric values scale with DPR; `'hairline'` resolves to one device pixel at the active DPR.

@@ -188,37 +188,37 @@ describe('layout UI tree', () => {
     expect(events).toEqual(['layout', 'frame'])
   })
 
-  it('stores normal and submersion gating on scene containers', () => {
+  it('stores normal and blend support gating on scene containers', () => {
     const defaultContainer = new SceneContainer()
     expect(defaultContainer.normalGating).toEqual({
       enabled: true,
       hermiteCap: 0.84,
       hermiteKnee: 0.7,
     })
-    expect(defaultContainer.submersionGating).toBe(true)
+    expect(defaultContainer.blendSupportGating).toBe(true)
 
     const container = new SceneContainer({
       normalGating: {
         hermiteKnee: 0.72,
         hermiteCap: 0.86,
       },
-      submersionGating: false,
+      blendSupportGating: false,
     })
     expect(container.normalGating).toEqual({
       enabled: true,
       hermiteCap: 0.86,
       hermiteKnee: 0.72,
     })
-    expect(container.submersionGating).toBe(false)
+    expect(container.blendSupportGating).toBe(false)
 
     container.normalGating = false
-    container.submersionGating = true
+    container.blendSupportGating = true
     expect(container.normalGating).toEqual({
       enabled: false,
       hermiteCap: 0.84,
       hermiteKnee: 0.7,
     })
-    expect(container.submersionGating).toBe(true)
+    expect(container.blendSupportGating).toBe(true)
   })
 
   it('propagates gating changes and invalidates frames', () => {
@@ -236,14 +236,14 @@ describe('layout UI tree', () => {
       hermiteKnee: 0.76,
       hermiteCap: 0.82,
     }
-    container.submersionGating = false
+    container.blendSupportGating = false
 
     expect(container.sceneNode.normalGating).toEqual({
       enabled: false,
       hermiteCap: 0.82,
       hermiteKnee: 0.76,
     })
-    expect(container.sceneNode.submersionGating).toBe(false)
+    expect(container.sceneNode.blendSupportGating).toBe(false)
     expect(events).toEqual([
       'frame',
       'frame',

@@ -7,22 +7,8 @@ import {
 import { Leva, useControls } from 'leva'
 import { createPlugin, useInputContext } from 'leva/plugin'
 import {
-  SDF_EPSILON,
-  aabbFromPoints,
-  clamp01,
-  createEmptySubmergedAreas,
-  estimateShapeCellSubmersions,
-  hermiteCapGate,
-  intersectBounds,
-  intersectConvexPolygons,
-  polygonArea,
   resolveNormalGating,
-  shapeSubmergedAreaAtCenteredLocal,
-  smoothUnionGatingInfo,
-  type ShapeSubmergedAreas,
-  type ShapeSubmergedAreasOf,
-  type ShapeSubmersionEntry,
-  type TransformedShapeBounds,
+  sdfUtils,
 } from '@liquid-dom/core'
 import {
   Frame,
@@ -43,7 +29,7 @@ const GLASS_ORIGIN = { x: 0.5, y: 0.5 }
 const CONTAINER_SPACING = 160
 const MIN_CONTAINER_SPACING = 0
 const MAX_CONTAINER_SPACING = 160
-const SUBMERSION_GATING_ENABLED = true
+const BLEND_SUPPORT_GATING_ENABLED = true
 const NORMAL_GATING_HERMITE_KNEE = 0.7
 const NORMAL_GATING_HERMITE_CAP = 0.84
 const MIN_NORMAL_GATING_HERMITE_PARAMETER = 0
@@ -90,7 +76,7 @@ type BlendingControls = {
   normalGatingEnabled: boolean
   normalGatingHermiteCap: number
   normalGatingHermiteKnee: number
-  submersionGatingEnabled: boolean
+  blendSupportGatingEnabled: boolean
 }
 
 type GatingPlotValue = {
@@ -172,7 +158,7 @@ export default function App() {
     normalGatingEnabled,
     normalGatingHermiteCap,
     normalGatingHermiteKnee,
-    submersionGatingEnabled,
+    blendSupportGatingEnabled,
   }, setControls] = useControls(() => ({
     blendingDistance: {
       value: CONTAINER_SPACING,
@@ -213,9 +199,9 @@ export default function App() {
       },
       label: 'Normal gating graph',
     }),
-    submersionGatingEnabled: {
-      value: SUBMERSION_GATING_ENABLED,
-      label: 'Enable submersion gating',
+    blendSupportGatingEnabled: {
+      value: BLEND_SUPPORT_GATING_ENABLED,
+      label: 'Enable blend support gating',
     },
     boundsVisible: {
       value: false,
@@ -395,7 +381,7 @@ export default function App() {
                     hermiteCap: normalGatingHermiteCap,
                     hermiteKnee: normalGatingHermiteKnee,
                   }}
-                  submersionGating={submersionGatingEnabled}
+                  blendSupportGating={blendSupportGatingEnabled}
                   bezelWidth={18}
                   displacementBlur={8}
                   thickness={86}
@@ -437,7 +423,7 @@ export default function App() {
               opacity={SAMPLE_VISUALIZATION_OPACITY}
               shapes={shapes}
               stageSize={stageSize}
-              submersionGatingEnabled={submersionGatingEnabled}
+              blendSupportGatingEnabled={blendSupportGatingEnabled}
             />
           )}
 
@@ -501,7 +487,7 @@ type BoundsOverlayProps = {
   opacity: number
   shapes: ShapeState[]
   stageSize: StageSize
-  submersionGatingEnabled: boolean
+  blendSupportGatingEnabled: boolean
 }
 
 function BoundsOverlay({
@@ -514,7 +500,7 @@ function BoundsOverlay({
   opacity,
   shapes,
   stageSize,
-  submersionGatingEnabled,
+  blendSupportGatingEnabled,
 }: BoundsOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
@@ -549,18 +535,18 @@ function BoundsOverlay({
       cellBounds: shapeCellBoundsFromState(shape),
       shape,
     }))
-    const submergedAreasByShape = new Map<ShapeId, ShapeSubmergedAreas>()
+    const submergedAreasByShape = new Map<ShapeId, sdfUtils.ShapeSubmergedAreas>()
 
     for (const { bounds } of shapeBounds) {
       for (const other of shapeBounds) {
         if (other.bounds === bounds) {
           continue
         }
-        if (!intersectBounds(bounds.aabb, other.bounds.aabb)) {
+        if (!sdfUtils.intersectBounds(bounds.aabb, other.bounds.aabb)) {
           continue
         }
-        const overlap = intersectConvexPolygons(bounds.polygon, other.bounds.polygon)
-        if (polygonArea(overlap) <= SDF_EPSILON) {
+        const overlap = sdfUtils.intersectConvexPolygons(bounds.polygon, other.bounds.polygon)
+        if (sdfUtils.polygonArea(overlap) <= sdfUtils.SDF_EPSILON) {
           continue
         }
         drawPolygon(context, overlap, {
@@ -573,7 +559,7 @@ function BoundsOverlay({
 
     for (const entry of shapeBounds) {
       const { bounds, cellBounds, shape } = entry
-      const cellSubmersions = estimateShapeCellSubmersions(shapeBounds, entry)
+      const cellSubmersions = sdfUtils.estimateShapeCellSubmersions(shapeBounds, entry)
       submergedAreasByShape.set(shape.id, cellSubmersions)
       const cellEntries = [
         { bounds: cellBounds.topLeft, localX: shape.width * 0.25, localY: shape.height * 0.25, value: cellSubmersions.topLeft },
@@ -624,7 +610,7 @@ function BoundsOverlay({
         hermiteCap,
         hermiteKnee,
         submergedAreasByShape,
-        submersionGatingEnabled,
+        blendSupportGatingEnabled,
       })
     }
 
@@ -638,7 +624,7 @@ function BoundsOverlay({
     normalGatingEnabled,
     shapes,
     stageSize,
-    submersionGatingEnabled,
+    blendSupportGatingEnabled,
   ])
 
   return (
@@ -655,7 +641,7 @@ function GatingPlot({
   hermiteCap,
   hermiteKnee,
 }: GatingPlotProps) {
-  const path = createGatingPath((angle) => hermiteCapGate(angle / Math.PI, hermiteKnee, hermiteCap))
+  const path = createGatingPath((angle) => sdfUtils.hermiteCapGate(angle / Math.PI, hermiteKnee, hermiteCap))
   const xTicks = [0, 45, 90, 135, 180]
   const yTicks = [0, 0.25, 0.5, 0.75, 1]
 
@@ -706,7 +692,7 @@ function plotX(angle: number) {
 
 function plotY(gate: number) {
   const height = PLOT_HEIGHT - PLOT_MARGIN.top - PLOT_MARGIN.bottom
-  return PLOT_MARGIN.top + (1 - clamp01(gate)) * height
+  return PLOT_MARGIN.top + (1 - sdfUtils.clamp01(gate)) * height
 }
 
 function shapeLocalPointToStagePoint(shape: ShapeState, localX: number, localY: number): StagePoint {
@@ -723,11 +709,18 @@ function getDevicePixelRatio() {
   return typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1
 }
 
-type ShapeBoundsEntry = ShapeSubmersionEntry & {
+type ShapeBoundsEntry = sdfUtils.ShapeSubmersionEntry & {
   shape: ShapeState
 }
 
-function shapeBoundsFromState(shape: ShapeState): TransformedShapeBounds {
+type ShapeCellBounds = {
+  bottomLeft: sdfUtils.TransformedShapeBounds
+  bottomRight: sdfUtils.TransformedShapeBounds
+  topLeft: sdfUtils.TransformedShapeBounds
+  topRight: sdfUtils.TransformedShapeBounds
+}
+
+function shapeBoundsFromState(shape: ShapeState): sdfUtils.TransformedShapeBounds {
   const polygon = [
     shapeLocalPointToStagePoint(shape, 0, 0),
     shapeLocalPointToStagePoint(shape, shape.width, 0),
@@ -735,13 +728,13 @@ function shapeBoundsFromState(shape: ShapeState): TransformedShapeBounds {
     shapeLocalPointToStagePoint(shape, 0, shape.height),
   ]
   return {
-    aabb: aabbFromPoints(polygon),
-    area: polygonArea(polygon),
+    aabb: sdfUtils.aabbFromPoints(polygon),
+    area: sdfUtils.polygonArea(polygon),
     polygon,
   }
 }
 
-function shapeCellBoundsFromState(shape: ShapeState): ShapeSubmergedAreasOf<TransformedShapeBounds> {
+function shapeCellBoundsFromState(shape: ShapeState): ShapeCellBounds {
   const halfWidth = shape.width * 0.5
   const halfHeight = shape.height * 0.5
   const cellBounds = (minX: number, minY: number, maxX: number, maxY: number) => {
@@ -753,8 +746,8 @@ function shapeCellBoundsFromState(shape: ShapeState): ShapeSubmergedAreasOf<Tran
     ]
 
     return {
-      aabb: aabbFromPoints(polygon),
-      area: polygonArea(polygon),
+      aabb: sdfUtils.aabbFromPoints(polygon),
+      area: sdfUtils.polygonArea(polygon),
       polygon,
     }
   }
@@ -776,7 +769,7 @@ function drawPolygon(
     width?: number
   },
 ) {
-  if (polygon.length < 3 || polygonArea(polygon) <= SDF_EPSILON) {
+  if (polygon.length < 3 || sdfUtils.polygonArea(polygon) <= sdfUtils.SDF_EPSILON) {
     return
   }
 
@@ -805,8 +798,8 @@ type NormalGateVisualizationOptions = {
   enabled: boolean
   hermiteCap: number
   hermiteKnee: number
-  submergedAreasByShape: Map<ShapeId, ShapeSubmergedAreas>
-  submersionGatingEnabled: boolean
+  submergedAreasByShape: Map<ShapeId, sdfUtils.ShapeSubmergedAreas>
+  blendSupportGatingEnabled: boolean
 }
 
 function drawNormalGateVisualization(
@@ -816,7 +809,7 @@ function drawNormalGateVisualization(
   stageSize: StageSize,
   options: NormalGateVisualizationOptions,
 ) {
-  const emptySubmergedAreas = createEmptySubmergedAreas()
+  const emptySubmergedAreas = sdfUtils.createEmptySubmergedAreas()
   const samples = shapes
     .map((shape) => shapeSdfSampleAtPoint(
       shape,
@@ -849,7 +842,7 @@ function shapeSdfSampleAtPoint(
   shape: ShapeState,
   point: StagePoint,
   cornerRadius: number,
-  submergedAreas: ShapeSubmergedAreas,
+  submergedAreas: sdfUtils.ShapeSubmergedAreas,
 ): ShapeSdfSample {
   const local = stagePointToShapeLocal(point, shape)
   const halfWidth = shape.width * 0.5
@@ -870,7 +863,7 @@ function shapeSdfSampleAtPoint(
     distance,
     normal: normalizeVector(rotateLocalVector(localNormal.x, localNormal.y, shape.rotation)),
     shape,
-    submergedArea: shapeSubmergedAreaAtCenteredLocal(local, shape, submergedAreas),
+    submergedArea: sdfUtils.shapeSubmergedAreaAtCenteredLocal(local, shape, submergedAreas),
   }
 }
 
@@ -882,7 +875,7 @@ function roundedRectLocalNormal(
   const signX = local.x < 0 ? -1 : 1
   const signY = local.y < 0 ? -1 : 1
 
-  if (outside.x > SDF_EPSILON || outside.y > SDF_EPSILON) {
+  if (outside.x > sdfUtils.SDF_EPSILON || outside.y > sdfUtils.SDF_EPSILON) {
     return normalizeVector({
       x: outside.x * signX,
       y: outside.y * signY,
@@ -901,7 +894,7 @@ function roundedRectLocalNormal(
 
 function normalizeVector(vector: StagePoint): StagePoint {
   const length = Math.hypot(vector.x, vector.y)
-  if (length <= SDF_EPSILON) {
+  if (length <= sdfUtils.SDF_EPSILON) {
     return { x: 0, y: -1 }
   }
 
@@ -916,7 +909,7 @@ function normalGateForSamples(
   right: ShapeSdfSample,
   options: NormalGateVisualizationOptions,
 ) {
-  return smoothUnionGatingInfo(
+  return sdfUtils.smoothUnionGatingInfo(
     left,
     right,
     options.blendingDistance,
@@ -925,7 +918,7 @@ function normalGateForSamples(
       hermiteCap: options.hermiteCap,
       hermiteKnee: options.hermiteKnee,
     }),
-    options.submersionGatingEnabled,
+    options.blendSupportGatingEnabled,
   )
 }
 
@@ -1011,9 +1004,9 @@ function drawNormalGateReadout(
   const lines = [
     `angle ${Math.round((gateInfo.angle / Math.PI) * 180)} deg`,
     `normal gate ${Math.round(gateInfo.normalGate * 100)}%`,
-    options.submersionGatingEnabled
-      ? `submersion ${Math.round(gateInfo.submergedArea * 100)}%`
-      : 'submersion off',
+    options.blendSupportGatingEnabled
+      ? `support ${Math.round((1 - gateInfo.submergedArea) * 100)}%`
+      : 'support off',
     `blend ${gateInfo.blendDistance.toFixed(0)} px`,
   ]
   const height = padding * 2 + lineHeight * lines.length + barHeight + 8

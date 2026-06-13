@@ -347,13 +347,13 @@ export function smoothUnionGatingInfo(
   right: SdfSample,
   blendDistance: number,
   normalGating: ResolvedNormalGating,
-  submersionGating: boolean,
+  blendSupportGating: boolean,
 ) {
   const normalGate = normalGateForNormals(left.normal, right.normal, normalGating)
   const baseBlendDistance = blendDistance * normalGate.gate
   const baseH = smoothUnionWeight(left.distance, right.distance, baseBlendDistance)
   const submergedArea = lerp(right.submergedArea, left.submergedArea, baseH)
-  const submergedAreaScale = submersionGating ? 1 - clamp01(submergedArea) : 1
+  const submergedAreaScale = blendSupportGating ? 1 - clamp01(submergedArea) : 1
 
   return {
     angle: normalGate.angle,

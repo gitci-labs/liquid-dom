@@ -995,13 +995,13 @@ export class GlassContainer extends SingleChildUiNode<LayoutNode, SceneContainer
     }
   }
 
-  get submersionGating(): boolean {
-    return this.sceneNode.submersionGating
+  get blendSupportGating(): boolean {
+    return this.sceneNode.blendSupportGating
   }
 
-  set submersionGating(value: boolean) {
-    if (setProperty(this.sceneNode, 'submersionGating', value)) {
-      this.invalidateFrame('submersionGating')
+  set blendSupportGating(value: boolean) {
+    if (setProperty(this.sceneNode, 'blendSupportGating', value)) {
+      this.invalidateFrame('blendSupportGating')
     }
   }
 

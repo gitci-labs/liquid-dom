@@ -450,7 +450,7 @@ describe('React layout components', () => {
             hermiteKnee: 0.72,
             hermiteCap: 0.86,
           }}
-          submersionGating={false}
+          blendSupportGating={false}
         >
           <Glass>
             <FixedHtml width={10} height={10} />
@@ -464,14 +464,14 @@ describe('React layout components', () => {
       hermiteCap: 0.86,
       hermiteKnee: 0.72,
     })
-    expect(containerRef.current?.submersionGating).toBe(false)
+    expect(containerRef.current?.blendSupportGating).toBe(false)
 
     await view.rerender(
       <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <GlassContainer
           ref={containerRef}
           normalGating={false}
-          submersionGating={true}
+          blendSupportGating={true}
         >
           <Glass>
             <FixedHtml width={10} height={10} />
@@ -485,7 +485,7 @@ describe('React layout components', () => {
       hermiteCap: 0.84,
       hermiteKnee: 0.7,
     })
-    expect(containerRef.current?.submersionGating).toBe(true)
+    expect(containerRef.current?.blendSupportGating).toBe(true)
 
     await view.rerender(
       <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
@@ -496,7 +496,7 @@ describe('React layout components', () => {
             hermiteKnee: 0.74,
             hermiteCap: 0.88,
           }}
-          submersionGating={false}
+          blendSupportGating={false}
         >
           <Glass>
             <FixedHtml width={10} height={10} />
@@ -510,7 +510,7 @@ describe('React layout components', () => {
       hermiteCap: 0.88,
       hermiteKnee: 0.74,
     })
-    expect(containerRef.current?.submersionGating).toBe(false)
+    expect(containerRef.current?.blendSupportGating).toBe(false)
   })
 
   it('keeps child order stable through StrictMode effect replay', async () => {

@@ -12,7 +12,7 @@ export const GlobalsLayout = structLayout({
   shape: vec4('smoothing', 'bezelWidth', 'shapeCount', 'surfaceProfile'),
   sdf: vec4('normalGatingEnabled'),
   sdfParams0: vec4(
-    'submersionGatingEnabled',
+    'blendSupportGatingEnabled',
   ),
   sdfParams2: vec4(
     'normalGatingHermiteKnee',

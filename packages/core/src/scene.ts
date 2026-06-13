@@ -65,7 +65,7 @@ export type ContainerInit = Partial<Transform> & {
   displacementFactor?: number
   displacementBlur?: number
   normalGating?: NormalGating
-  submersionGating?: boolean
+  blendSupportGating?: boolean
   ior?: number
   contentIor?: number
   contentDepth?: number
@@ -678,7 +678,7 @@ export class Container implements Transform {
     this._normalGating = resolveNormalGating(value)
   }
   /** Enables shape-area-based modulation of the SDF smooth-union radius. */
-  submersionGating = true
+  blendSupportGating = true
   /** Refractive index used for the displacement model. */
   ior = 1.5
   /** Refractive index used when refracting DOM content rendered inside the glass. */
@@ -758,8 +758,8 @@ export class Container implements Transform {
     if (options.normalGating !== undefined) {
       this.normalGating = options.normalGating
     }
-    if (options.submersionGating !== undefined) {
-      this.submersionGating = options.submersionGating
+    if (options.blendSupportGating !== undefined) {
+      this.blendSupportGating = options.blendSupportGating
     }
     if (options.ior !== undefined) {
       this.ior = options.ior

@@ -458,7 +458,7 @@ export class WebGpuGlassCore {
         normalGatingEnabled: normalGating.enabled ? 1 : 0,
       },
       sdfParams0: {
-        submersionGatingEnabled: container.submersionGating ? 1 : 0,
+        blendSupportGatingEnabled: container.blendSupportGating ? 1 : 0,
       },
       sdfParams2: {
         normalGatingHermiteKnee: clamp(normalGating.hermiteKnee, 0, 1),
@@ -576,7 +576,7 @@ export class WebGpuGlassCore {
       activeCount += 1
     }
 
-    const submergedAreas = container.submersionGating
+    const submergedAreas = container.blendSupportGating
       ? estimateSubmergedAreaPercentagesFromBounds(packedShapes)
       : packedShapes.map(() => createEmptySubmergedAreas())
 
