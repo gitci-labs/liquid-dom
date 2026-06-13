@@ -56,6 +56,15 @@ import {
 } from './scene-order'
 import { Container, Html, Scene, type TraversedSceneLayer } from '../scene'
 import {
+  createEmptySubmergedAreas,
+  estimateSubmergedAreaPercentagesFromBounds,
+  polygonArea,
+  resolveNormalGating,
+  type ShapeSubmergedAreasOf,
+  type ShapeSubmersionEntry,
+  type TransformedShapeBounds,
+} from '../sdf'
+import {
   DISPLACEMENT_FIELD_SHADER,
   GLASS_SHADER,
   HTML_COMPOSITE_SHADER,
@@ -65,7 +74,6 @@ import {
   TEXTURE_BLIT_SHADER,
 } from '../shaders'
 import type {
-  NormalDivergenceBlendMode,
   SpecularWidth,
   SurfaceProfile,
 } from '../types'
@@ -98,19 +106,7 @@ type PackedShapesResult = {
   bounds: BoundsRect | null
 }
 
-type BoundsPoint = {
-  x: number
-  y: number
-}
-
-type TransformedShapeBounds = {
-  aabb: BoundsRect
-  area: number
-  polygon: BoundsPoint[]
-}
-
-type PackedShapeCpuData = {
-  bounds: TransformedShapeBounds
+type PackedShapeCpuData = ShapeSubmersionEntry & {
   contentRange?: {
     count: number
     start: number
@@ -129,8 +125,6 @@ type BackdropMetricsBoundsBuffer = GpuStructBuffer<GpuStructDefinition<typeof Ba
 type HtmlCompositeParamsBuffer = GpuStructBuffer<GpuStructDefinition<typeof HtmlCompositeParamsLayout>>
 const DISPLACEMENT_FIELD_FORMAT = 'rgba16float' satisfies GPUTextureFormat
 const SHADOW_MASK_FORMAT = 'rgba8unorm' satisfies GPUTextureFormat
-const SDF_EPSILON = 0.0001
-const MAX_EXACT_POLYGON_UNION_COUNT = 8
 
 /** Maps a public surface profile string to the shader enum value. */
 function getSurfaceProfileIndex(profile: SurfaceProfile) {
@@ -143,148 +137,11 @@ function getSurfaceProfileIndex(profile: SurfaceProfile) {
   return 2
 }
 
-/** Maps a public normal-divergence mode string to the shader enum value. */
-function getNormalDivergenceBlendModeIndex(mode: NormalDivergenceBlendMode) {
-  if (mode === 'angle') {
-    return 1
-  }
-  return 0
-}
-
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
 
-function aabbArea(bounds: BoundsRect) {
-  return Math.max(bounds.maxX - bounds.minX, 0) * Math.max(bounds.maxY - bounds.minY, 0)
-}
-
-function intersectBounds(left: BoundsRect, right: BoundsRect): BoundsRect | null {
-  const intersection = {
-    minX: Math.max(left.minX, right.minX),
-    minY: Math.max(left.minY, right.minY),
-    maxX: Math.min(left.maxX, right.maxX),
-    maxY: Math.min(left.maxY, right.maxY),
-  }
-
-  return hasBounds(intersection) ? intersection : null
-}
-
-function cross(ax: number, ay: number, bx: number, by: number) {
-  return ax * by - ay * bx
-}
-
-function polygonSignedArea(points: BoundsPoint[]) {
-  let area = 0
-  for (let index = 0; index < points.length; index += 1) {
-    const current = points[index]
-    const next = points[(index + 1) % points.length]
-    area += current.x * next.y - next.x * current.y
-  }
-  return area * 0.5
-}
-
-function polygonArea(points: BoundsPoint[]) {
-  return Math.abs(polygonSignedArea(points))
-}
-
-function isInsideClipEdge(point: BoundsPoint, edgeStart: BoundsPoint, edgeEnd: BoundsPoint, clipWinding: number) {
-  const edgeCross = cross(
-    edgeEnd.x - edgeStart.x,
-    edgeEnd.y - edgeStart.y,
-    point.x - edgeStart.x,
-    point.y - edgeStart.y,
-  )
-  return clipWinding >= 0 ? edgeCross >= -SDF_EPSILON : edgeCross <= SDF_EPSILON
-}
-
-function intersectLines(
-  lineStart: BoundsPoint,
-  lineEnd: BoundsPoint,
-  clipStart: BoundsPoint,
-  clipEnd: BoundsPoint,
-): BoundsPoint {
-  const lineX = lineEnd.x - lineStart.x
-  const lineY = lineEnd.y - lineStart.y
-  const clipX = clipEnd.x - clipStart.x
-  const clipY = clipEnd.y - clipStart.y
-  const denominator = cross(lineX, lineY, clipX, clipY)
-  if (Math.abs(denominator) <= SDF_EPSILON) {
-    return lineEnd
-  }
-
-  const t = cross(clipStart.x - lineStart.x, clipStart.y - lineStart.y, clipX, clipY) / denominator
-  return {
-    x: lineStart.x + lineX * t,
-    y: lineStart.y + lineY * t,
-  }
-}
-
-function clipPolygonToEdge(
-  subject: BoundsPoint[],
-  clipStart: BoundsPoint,
-  clipEnd: BoundsPoint,
-  clipWinding: number,
-) {
-  const output: BoundsPoint[] = []
-  if (subject.length === 0) {
-    return output
-  }
-
-  let previous = subject[subject.length - 1]
-  let previousInside = isInsideClipEdge(previous, clipStart, clipEnd, clipWinding)
-  for (const current of subject) {
-    const currentInside = isInsideClipEdge(current, clipStart, clipEnd, clipWinding)
-    if (currentInside !== previousInside) {
-      output.push(intersectLines(previous, current, clipStart, clipEnd))
-    }
-    if (currentInside) {
-      output.push(current)
-    }
-    previous = current
-    previousInside = currentInside
-  }
-  return output
-}
-
-function intersectConvexPolygons(subject: BoundsPoint[], clip: BoundsPoint[]) {
-  let output = subject
-  const clipWinding = polygonSignedArea(clip)
-  for (let index = 0; index < clip.length && output.length >= 3; index += 1) {
-    output = clipPolygonToEdge(output, clip[index], clip[(index + 1) % clip.length], clipWinding)
-  }
-  return output.length >= 3 ? output : []
-}
-
-function polygonUnionArea(polygons: BoundsPoint[][], maxArea: number) {
-  if (polygons.length === 0) {
-    return 0
-  }
-  if (polygons.length > MAX_EXACT_POLYGON_UNION_COUNT) {
-    return Math.min(polygons.reduce((area, polygon) => area + polygonArea(polygon), 0), maxArea)
-  }
-
-  let area = 0
-  const accumulate = (startIndex: number, currentPolygon: BoundsPoint[] | null, subsetSize: number) => {
-    for (let index = startIndex; index < polygons.length; index += 1) {
-      const nextPolygon = currentPolygon
-        ? intersectConvexPolygons(currentPolygon, polygons[index])
-        : polygons[index]
-      const nextArea = polygonArea(nextPolygon)
-      if (nextArea <= SDF_EPSILON) {
-        continue
-      }
-
-      const nextSubsetSize = subsetSize + 1
-      area += nextSubsetSize % 2 === 1 ? nextArea : -nextArea
-      accumulate(index + 1, nextPolygon, nextSubsetSize)
-    }
-  }
-  accumulate(0, null, 0)
-  return Math.min(Math.max(area, 0), maxArea)
-}
-
-function shapeBoundsFromCorners(corners: BoundsPoint[]): TransformedShapeBounds {
+function shapeBoundsFromCorners(corners: TransformedShapeBounds['polygon']): TransformedShapeBounds {
   const bounds = createEmptyBounds()
   for (const corner of corners) {
     expandBounds(bounds, corner.x, corner.y)
@@ -296,31 +153,22 @@ function shapeBoundsFromCorners(corners: BoundsPoint[]): TransformedShapeBounds 
   }
 }
 
-function estimateSubmergedAreaPercentagesFromBounds(shapes: PackedShapeCpuData[]) {
-  if (shapes.length === 0) {
-    return []
+function shapeCellBoundsFromMatrix(world: Matrix2D, width: number, height: number): ShapeSubmergedAreasOf<TransformedShapeBounds> {
+  const halfWidth = width * 0.5
+  const halfHeight = height * 0.5
+  const cellBounds = (minX: number, minY: number, maxX: number, maxY: number) => shapeBoundsFromCorners([
+    transformPoint(world, minX, minY),
+    transformPoint(world, maxX, minY),
+    transformPoint(world, maxX, maxY),
+    transformPoint(world, minX, maxY),
+  ])
+
+  return {
+    topLeft: cellBounds(0, 0, halfWidth, halfHeight),
+    topRight: cellBounds(halfWidth, 0, width, halfHeight),
+    bottomLeft: cellBounds(0, halfHeight, halfWidth, height),
+    bottomRight: cellBounds(halfWidth, halfHeight, width, height),
   }
-
-  return shapes.map((shape, shapeIndex) => {
-    const shapeArea = shape.bounds.area
-    if (shapeArea <= SDF_EPSILON) {
-      return 0
-    }
-
-    const overlaps = shapes.flatMap((otherShape, otherIndex) => {
-      if (otherIndex === shapeIndex) {
-        return []
-      }
-      if (!intersectBounds(shape.bounds.aabb, otherShape.bounds.aabb)) {
-        return []
-      }
-
-      const overlap = intersectConvexPolygons(shape.bounds.polygon, otherShape.bounds.polygon)
-      return polygonArea(overlap) > SDF_EPSILON ? [overlap] : []
-    })
-
-    return clamp(polygonUnionArea(overlaps, shapeArea) / shapeArea, 0, 1)
-  })
 }
 
 /** Texture-in/texture-out WebGPU compositor for a liquid-glass scene graph. */
@@ -590,6 +438,7 @@ export class WebGpuGlassCore {
   /** Writes per-container global shader parameters. */
   private writeGlobals(container: Container, shapeCount: number) {
     const dpr = this.currentDpr
+    const normalGating = resolveNormalGating(container.normalGating)
 
     this.globalsBuffer.write({
       canvas: {
@@ -606,16 +455,14 @@ export class WebGpuGlassCore {
         surfaceProfile: getSurfaceProfileIndex(container.surfaceProfile),
       },
       sdf: {
-        normalDivergenceBlendMode: getNormalDivergenceBlendModeIndex(container.normalDivergenceBlendMode),
-        normalDivergenceBlendEnabled: container.normalDivergenceBlendEnabled ? 1 : 0,
+        normalGatingEnabled: normalGating.enabled ? 1 : 0,
       },
       sdfParams0: {
-        submergedAreaModulationEnabled: container.exposureBlendSubmergedAreaModulationEnabled ? 1 : 0,
-        submergedAreaMinStrength: container.exposureBlendSubmergedAreaMinStrength,
-        submergedAreaPeriod: container.exposureBlendSubmergedAreaPeriod,
+        submersionGatingEnabled: container.submersionGating ? 1 : 0,
       },
-      sdfParams1: {
-        submergedAreaDelay: container.exposureBlendSubmergedAreaDelay,
+      sdfParams2: {
+        normalGatingHermiteKnee: clamp(normalGating.hermiteKnee, 0, 1),
+        normalGatingHermiteCap: clamp(normalGating.hermiteCap, 0, 1),
       },
       glass: {
         thickness: container.thickness * dpr,
@@ -707,6 +554,7 @@ export class WebGpuGlassCore {
       const bottomLeft = transformPoint(worldDevice, 0, glass.height)
       const bottomRight = transformPoint(worldDevice, glass.width, glass.height)
       const shapeBounds = shapeBoundsFromCorners([topLeft, topRight, bottomRight, bottomLeft])
+      const cellBounds = shapeCellBoundsFromMatrix(worldDevice, glass.width, glass.height)
       expandBounds(bounds, shapeBounds.aabb.minX, shapeBounds.aabb.minY)
       expandBounds(bounds, shapeBounds.aabb.maxX, shapeBounds.aabb.maxY)
 
@@ -715,6 +563,7 @@ export class WebGpuGlassCore {
       const halfHeight = glass.height * 0.5
       packedShapes.push({
         bounds: shapeBounds,
+        cellBounds,
         contentRange: contentRange ?? undefined,
         cornerRadius: glass.cornerRadius,
         cornerSmoothing: glass.cornerSmoothing,
@@ -727,9 +576,9 @@ export class WebGpuGlassCore {
       activeCount += 1
     }
 
-    const submergedAreas = container.exposureBlendSubmergedAreaModulationEnabled
+    const submergedAreas = container.submersionGating
       ? estimateSubmergedAreaPercentagesFromBounds(packedShapes)
-      : packedShapes.map(() => 0)
+      : packedShapes.map(() => createEmptySubmergedAreas())
 
     packedShapes.forEach((shape, index) => {
       shapesBuffer?.writeAt(index, {
@@ -753,7 +602,12 @@ export class WebGpuGlassCore {
         contentRange: {
           start: shape.contentRange?.start ?? 0,
           count: shape.contentRange?.count ?? 0,
-          submergedArea: submergedAreas[index] ?? 0,
+        },
+        submergedAreas: {
+          topLeft: submergedAreas[index]?.topLeft ?? 0,
+          topRight: submergedAreas[index]?.topRight ?? 0,
+          bottomLeft: submergedAreas[index]?.bottomLeft ?? 0,
+          bottomRight: submergedAreas[index]?.bottomRight ?? 0,
         },
       })
     })

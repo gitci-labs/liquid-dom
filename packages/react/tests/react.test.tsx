@@ -439,18 +439,18 @@ describe('React layout components', () => {
     expect(rendererState.instances[0]?.scene).toBe(canvasRef.current?.scene)
   })
 
-  it('passes GlassContainer normal-divergence blend mode through the ref', async () => {
+  it('passes GlassContainer gating props through the ref', async () => {
     const containerRef = createRef<GlassContainerRef>()
 
     const view = await renderReact(
       <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <GlassContainer
           ref={containerRef}
-          normalDivergenceBlendMode="half-chord"
-          exposureBlendSubmergedAreaModulationEnabled={false}
-          exposureBlendSubmergedAreaMinStrength={0.2}
-          exposureBlendSubmergedAreaPeriod={0.5}
-          exposureBlendSubmergedAreaDelay={0.1}
+          normalGating={{
+            hermiteKnee: 0.72,
+            hermiteCap: 0.86,
+          }}
+          submersionGating={false}
         >
           <Glass>
             <FixedHtml width={10} height={10} />
@@ -459,22 +459,19 @@ describe('React layout components', () => {
       </LiquidCanvas>,
     )
 
-    expect(containerRef.current?.normalDivergenceBlendMode).toBe('half-chord')
-    expect(containerRef.current?.exposureBlendSubmergedAreaModulationEnabled).toBe(false)
-    expect(containerRef.current?.exposureBlendSubmergedAreaMinStrength).toBe(0.2)
-    expect(containerRef.current?.exposureBlendSubmergedAreaPeriod).toBe(0.5)
-    expect(containerRef.current?.exposureBlendSubmergedAreaDelay).toBe(0.1)
+    expect(containerRef.current?.normalGating).toEqual({
+      enabled: true,
+      hermiteCap: 0.86,
+      hermiteKnee: 0.72,
+    })
+    expect(containerRef.current?.submersionGating).toBe(false)
 
     await view.rerender(
       <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <GlassContainer
           ref={containerRef}
-          normalDivergenceBlendMode="angle"
-          normalDivergenceBlendEnabled={false}
-          exposureBlendSubmergedAreaModulationEnabled={true}
-          exposureBlendSubmergedAreaMinStrength={0.1}
-          exposureBlendSubmergedAreaPeriod={0.4}
-          exposureBlendSubmergedAreaDelay={0.2}
+          normalGating={false}
+          submersionGating={true}
         >
           <Glass>
             <FixedHtml width={10} height={10} />
@@ -483,23 +480,23 @@ describe('React layout components', () => {
       </LiquidCanvas>,
     )
 
-    expect(containerRef.current?.normalDivergenceBlendMode).toBe('angle')
-    expect(containerRef.current?.normalDivergenceBlendEnabled).toBe(false)
-    expect(containerRef.current?.exposureBlendSubmergedAreaModulationEnabled).toBe(true)
-    expect(containerRef.current?.exposureBlendSubmergedAreaMinStrength).toBe(0.1)
-    expect(containerRef.current?.exposureBlendSubmergedAreaPeriod).toBe(0.4)
-    expect(containerRef.current?.exposureBlendSubmergedAreaDelay).toBe(0.2)
+    expect(containerRef.current?.normalGating).toEqual({
+      enabled: false,
+      hermiteCap: 0.84,
+      hermiteKnee: 0.7,
+    })
+    expect(containerRef.current?.submersionGating).toBe(true)
 
     await view.rerender(
       <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
         <GlassContainer
           ref={containerRef}
-          normalDivergenceBlendMode="half-chord"
-          normalDivergenceBlendEnabled={true}
-          exposureBlendSubmergedAreaModulationEnabled={false}
-          exposureBlendSubmergedAreaMinStrength={0.3}
-          exposureBlendSubmergedAreaPeriod={0.6}
-          exposureBlendSubmergedAreaDelay={0.05}
+          normalGating={{
+            enabled: true,
+            hermiteKnee: 0.74,
+            hermiteCap: 0.88,
+          }}
+          submersionGating={false}
         >
           <Glass>
             <FixedHtml width={10} height={10} />
@@ -508,12 +505,12 @@ describe('React layout components', () => {
       </LiquidCanvas>,
     )
 
-    expect(containerRef.current?.normalDivergenceBlendMode).toBe('half-chord')
-    expect(containerRef.current?.normalDivergenceBlendEnabled).toBe(true)
-    expect(containerRef.current?.exposureBlendSubmergedAreaModulationEnabled).toBe(false)
-    expect(containerRef.current?.exposureBlendSubmergedAreaMinStrength).toBe(0.3)
-    expect(containerRef.current?.exposureBlendSubmergedAreaPeriod).toBe(0.6)
-    expect(containerRef.current?.exposureBlendSubmergedAreaDelay).toBe(0.05)
+    expect(containerRef.current?.normalGating).toEqual({
+      enabled: true,
+      hermiteCap: 0.88,
+      hermiteKnee: 0.74,
+    })
+    expect(containerRef.current?.submersionGating).toBe(false)
   })
 
   it('keeps child order stable through StrictMode effect replay', async () => {

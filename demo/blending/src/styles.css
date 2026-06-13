@@ -31,7 +31,7 @@ select {
   display: grid;
   place-items: start center;
   min-height: 100dvh;
-  padding: 24px;
+  padding: 56px 24px 24px;
   background: #ffffff;
 }
 
@@ -52,6 +52,11 @@ select {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 30px 90px rgba(0, 0, 0, 0.36);
+}
+
+.blending-stage.visualizing,
+.blending-stage.visualizing * {
+  cursor: none !important;
 }
 
 .blending-canvas-shell,
@@ -87,92 +92,6 @@ select {
   pointer-events: none;
 }
 
-.blending-controls {
-  position: absolute;
-  top: 14px;
-  left: 14px;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 18px;
-  max-width: calc(100% - 28px);
-}
-
-.blending-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 13px;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.18);
-  color: rgba(255, 255, 255, 0.94);
-  font: 600 13px/1 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  box-shadow: 0 0 22px rgba(0, 0, 0, 0.16);
-  backdrop-filter: blur(18px);
-  cursor: pointer;
-}
-
-.blending-toggle-checkbox {
-  width: 13px;
-  height: 13px;
-  border: 1px solid currentColor;
-  border-radius: 4px;
-}
-
-.blending-toggle.active {
-  background: rgba(255, 255, 255, 0.86);
-  border-color: rgba(17, 17, 17, 0.12);
-  color: #111111;
-}
-
-.blending-toggle.active .blending-toggle-checkbox {
-  background: currentColor;
-  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.86);
-}
-
-.blending-distance-control,
-.blending-mode-control,
-.blending-mix-control {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: rgba(255, 255, 255, 0.94);
-  font: 600 13px/1 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.42);
-}
-
-.blending-distance-control input,
-.blending-mix-control input {
-  width: 96px;
-  accent-color: #ffffff;
-}
-
-.blending-distance-control output,
-.blending-mix-control output {
-  min-width: 2ch;
-  text-align: left;
-}
-
-.blending-mix-control output {
-  min-width: 4ch;
-}
-
-.blending-mode-control select {
-  min-width: 112px;
-  padding: 4px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.38);
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.16);
-  color: #ffffff;
-  cursor: pointer;
-}
-
-.blending-mode-control option {
-  color: #111111;
-}
-
 .blending-plot {
   width: 100%;
   color: #111111;
@@ -203,81 +122,29 @@ select {
   stroke-linecap: round;
   stroke-linejoin: round;
   opacity: 0.96;
-  transition: opacity 140ms ease;
 }
 
-.blending-plot-line.dimmed {
-  opacity: 0.14;
+.blending-plot-line.hermite-cap {
+  stroke: #8f5b00;
 }
 
-.blending-plot-line.half-chord,
-.blending-plot-legend .half-chord::before {
-  stroke: #0077ff;
-  background: #0077ff;
-}
-
-.blending-plot-line.angle,
-.blending-plot-legend .angle::before {
-  stroke: #e1582a;
-  background: #e1582a;
-}
-
-.blending-plot-line.submerged-k {
-  stroke: #111111;
-}
-
-.submerged-k-plot {
-  margin-top: 4px;
-}
-
-.blending-plot-labels {
-  fill: rgba(17, 17, 17, 0.72);
-}
-
-.blending-plot-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  padding-left: 48px;
-  color: rgba(17, 17, 17, 0.82);
-}
-
-.blending-plot-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  cursor: default;
-}
-
-.blending-plot-legend span::before {
-  width: 18px;
-  height: 3px;
-  border-radius: 999px;
-  content: "";
-}
-
-.blending-parameter-controls {
+.leva-gating-plot-control {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 10px 18px;
-  color: rgba(17, 17, 17, 0.82);
-  font: 600 12px/1 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  gap: 8px;
+  padding: 6px 0 8px;
 }
 
-.blending-parameter-control {
-  display: grid;
-  grid-template-columns: minmax(92px, 1fr) 96px 4ch;
-  align-items: center;
-  gap: 10px;
+.leva-gating-plot-control .blending-plot {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 10px;
 }
 
-.blending-parameter-control input {
-  width: 96px;
-  accent-color: #111111;
+.leva-gating-plot-control .blending-plot-grid line {
+  stroke: rgba(255, 255, 255, 0.14);
 }
 
-.blending-parameter-control output {
-  text-align: left;
+.leva-gating-plot-control .blending-plot-axis {
+  stroke: rgba(255, 255, 255, 0.48);
 }
 
 .blending-shape-hitbox {

@@ -156,14 +156,11 @@ struct VertexOutput {
 // back toward a hard union; diverging normals get the full blend radius so real
 // corners can form a rounded transition. A per-shape submerged-area estimate can
 // further scale that blend radius when one shape is mostly inside another
-// shape's blend influence.
-// globals.sdf.x selects the normal-divergence metric. Mode 0 uses half-chord,
-// mode 1 uses normalized angle.
-// globals.sdf.y toggles that normal gate; when disabled, every pair receives
+// shape's submersion region.
+// globals.sdf.x toggles that normal gate; when disabled, every pair receives
 // the full configured smoothing distance.
 const SDF_EPSILON: f32 = 0.0001;
 const SDF_GRADIENT_STEP_PX: f32 = 1.0;
-const SDF_TAU: f32 = 6.283185307179586;
 const SDF_NORMAL_ANGLE_INV_PI: f32 = 0.3183098861837907;
 const DEBUG_DISPLACEMENT_ENCODE_SCALE: f32 = 0.01;
 // Smooth blending can flatten the fused SDF so one distance unit covers
@@ -198,6 +195,24 @@ fn hardUnion(left: SdfSample, right: SdfSample) -> SdfSample {
     return left;
   }
   return right;
+}
+
+fn hermiteCapGate(value: f32, kneeInput: f32, capInput: f32) -> f32 {
+  let x = clamp(value, 0.0, 1.0);
+  let cap = clamp(capInput, 0.0, 1.0);
+  let knee = min(clamp(kneeInput, 0.0, 1.0), cap);
+  if (x <= knee) {
+    return x;
+  }
+
+  let span = max(1.0 - knee, SDF_EPSILON);
+  let u = clamp((x - knee) / span, 0.0, 1.0);
+  let u2 = u * u;
+  let u3 = u2 * u;
+  let h00 = 2.0 * u3 - 3.0 * u2 + 1.0;
+  let h10 = u3 - 2.0 * u2 + u;
+  let h01 = -2.0 * u3 + 3.0 * u2;
+  return clamp(h00 * knee + h10 * span + h01 * cap, 0.0, 1.0);
 }
 
 fn shapeLocalPos(shape: ShapeData, pos: vec2f) -> vec2f {
@@ -252,30 +267,31 @@ fn shapeGradient(shape: ShapeData, pos: vec2f) -> vec2f {
   ));
 }
 
+fn shapeSubmergedArea(shape: ShapeData, localPos: vec2f) -> f32 {
+  let size = max(shape.geometry.xy * 2.0, vec2f(SDF_EPSILON));
+  let uv = clamp(localPos / size, vec2f(0.0), vec2f(1.0));
+  let top = mix(shape.submergedAreas.x, shape.submergedAreas.y, uv.x);
+  let bottom = mix(shape.submergedAreas.z, shape.submergedAreas.w, uv.x);
+  return mix(top, bottom, uv.y);
+}
+
 fn shapeSdfSample(shape: ShapeData, pos: vec2f) -> SdfSample {
+  let localPos = shapeLocalPos(shape, pos);
   return SdfSample(
-    shapeDistance(shape, pos),
+    shapeDistanceFromLocal(shape, localPos),
     shapeGradient(shape, pos),
-    shape.contentRange.z,
+    shapeSubmergedArea(shape, localPos),
   );
 }
 
-fn normalDivergenceForSamples(left: SdfSample, right: SdfSample) -> f32 {
+fn normalGateForSamples(left: SdfSample, right: SdfSample) -> f32 {
   let normalAlignment = clamp(dot(left.gradient, right.gradient), -1.0, 1.0);
-  var normalDivergence = 1.0;
-  if (globals.sdf.y > 0.5) {
+  var normalGate = 1.0;
+  if (globals.sdf.x > 0.5) {
     let normalizedAngle = acos(normalAlignment) * SDF_NORMAL_ANGLE_INV_PI;
-    if (globals.sdf.x < 0.5) {
-      normalDivergence = length(left.gradient - right.gradient) * 0.5;
-    } else {
-      normalDivergence = normalizedAngle;
-    }
+    normalGate = hermiteCapGate(normalizedAngle, globals.sdfParams2.x, globals.sdfParams2.y);
   }
-  return normalDivergence;
-}
-
-fn shapedCosine01(value: f32) -> f32 {
-  return 0.5 + 0.5 * cos(value * SDF_TAU);
+  return normalGate;
 }
 
 fn smoothUnionWeight(left: SdfSample, right: SdfSample, blendDistance: f32) -> f32 {
@@ -287,21 +303,16 @@ fn submergedAreaKScale(submergedArea: f32) -> f32 {
     return 1.0;
   }
 
-  let lowK = clamp(globals.sdfParams0.y, 0.0, 1.0);
-  let period = max(globals.sdfParams0.z, SDF_EPSILON);
-  let delay = clamp(globals.sdfParams1.x, 0.0, 0.999);
-  let delayedArea = max(submergedArea - delay, 0.0) / max(1.0 - delay, SDF_EPSILON);
-  let curve = shapedCosine01(delayedArea * period);
-  return mix(lowK, 1.0, curve);
+  return 1.0 - clamp(submergedArea, 0.0, 1.0);
 }
 
 fn smoothUnion(
   left: SdfSample,
   right: SdfSample,
   smoothing: f32,
-  normalDivergence: f32,
+  normalGate: f32,
 ) -> SdfSample {
-  let baseBlendDistance = smoothing * normalDivergence;
+  let baseBlendDistance = smoothing * normalGate;
 
   if (baseBlendDistance <= SDF_EPSILON) {
     return hardUnion(left, right);
@@ -334,8 +345,8 @@ fn sceneSdfSample(pos: vec2f, shapeCount: u32, smoothing: f32) -> SdfSample {
       result = nextSample;
       found = true;
     } else {
-      let centerNormalDivergence = normalDivergenceForSamples(result, nextSample);
-      result = smoothUnion(result, nextSample, smoothing, centerNormalDivergence);
+      let centerNormalGate = normalGateForSamples(result, nextSample);
+      result = smoothUnion(result, nextSample, smoothing, centerNormalGate);
     }
   }
 

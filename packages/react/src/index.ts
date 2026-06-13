@@ -81,4 +81,8 @@ export type {
   ZStackProps,
   ZStackRef,
 } from './types'
-export type { NormalDivergenceBlendMode } from '@liquid-dom/core'
+export type {
+  NormalGating,
+  NormalGatingOptions,
+  ResolvedNormalGating,
+} from '@liquid-dom/core'

@@ -1,4 +1,29 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
+import { Leva, useControls } from 'leva'
+import { createPlugin, useInputContext } from 'leva/plugin'
+import {
+  SDF_EPSILON,
+  aabbFromPoints,
+  clamp01,
+  createEmptySubmergedAreas,
+  estimateShapeCellSubmersions,
+  hermiteCapGate,
+  intersectBounds,
+  intersectConvexPolygons,
+  polygonArea,
+  resolveNormalGating,
+  shapeSubmergedAreaAtCenteredLocal,
+  smoothUnionGatingInfo,
+  type ShapeSubmergedAreas,
+  type ShapeSubmergedAreasOf,
+  type ShapeSubmersionEntry,
+  type TransformedShapeBounds,
+} from '@liquid-dom/core'
 import {
   Frame,
   Glass,
@@ -7,29 +32,23 @@ import {
   LiquidCanvas,
   Transform,
   ZStack,
-  type NormalDivergenceBlendMode,
 } from '@liquid-dom/react'
 
 const GLASS_WIDTH = 220
 const GLASS_HEIGHT = 132
-const GLASS_CORNER_RADIUS = 50
+const GLASS_CORNER_RADIUS = 60
+const MIN_GLASS_CORNER_RADIUS = 0
+const MAX_GLASS_CORNER_RADIUS = 120
 const GLASS_ORIGIN = { x: 0.5, y: 0.5 }
 const CONTAINER_SPACING = 160
 const MIN_CONTAINER_SPACING = 0
 const MAX_CONTAINER_SPACING = 160
-const BLEND_INFLUENCE_GATING_ENABLED = true
-const BLEND_INFLUENCE_MIN_K = 0.1
-const BLEND_INFLUENCE_PERIOD = 0.5
-const BLEND_INFLUENCE_DELAY = 0
-const MIN_BLEND_INFLUENCE_MIN_K = 0
-const MAX_BLEND_INFLUENCE_MIN_K = 1
-const BLEND_INFLUENCE_MIN_K_STEP = 0.01
-const MIN_BLEND_INFLUENCE_PERIOD = 0.01
-const MAX_BLEND_INFLUENCE_PERIOD = 1
-const BLEND_INFLUENCE_PERIOD_STEP = 0.01
-const MIN_BLEND_INFLUENCE_DELAY = 0
-const MAX_BLEND_INFLUENCE_DELAY = 0.95
-const BLEND_INFLUENCE_DELAY_STEP = 0.01
+const SUBMERSION_GATING_ENABLED = true
+const NORMAL_GATING_HERMITE_KNEE = 0.7
+const NORMAL_GATING_HERMITE_CAP = 0.84
+const MIN_NORMAL_GATING_HERMITE_PARAMETER = 0
+const MAX_NORMAL_GATING_HERMITE_PARAMETER = 1
+const NORMAL_GATING_HERMITE_PARAMETER_STEP = 0.01
 const SAMPLE_VISUALIZATION_OPACITY = 0.5
 const CORNER_HIT_RADIUS = 20
 const EDGE_HIT_SIZE = 16
@@ -39,13 +58,8 @@ const INITIAL_DISTANCE = 34
 const BACKGROUND_BRIGHTNESS = 0.7
 const PLOT_WIDTH = 800
 const PLOT_HEIGHT = 240
-const PLOT_MARGIN = { top: 18, right: 18, bottom: 38, left: 48 }
+const PLOT_MARGIN = { top: 18, right: 18, bottom: 18, left: 18 }
 const PLOT_STEPS = 96
-const SDF_EPSILON = 0.0001
-const NORMAL_GATING_OPTIONS = [
-  { value: 'half-chord', label: 'Half-chord' },
-  { value: 'angle', label: 'Angle' },
-] satisfies Array<{ value: NormalDivergenceBlendMode; label: string }>
 
 type ShapeId = 'left' | 'right'
 type ResizeEdge = 'left' | 'right' | 'top' | 'bottom'
@@ -69,17 +83,30 @@ type StageSize = {
   height: number
 }
 
-type BoundsRect = {
-  minX: number
-  minY: number
-  maxX: number
-  maxY: number
+type BlendingControls = {
+  blendingDistance: number
+  boundsVisible: boolean
+  cornerRadius: number
+  normalGatingEnabled: boolean
+  normalGatingHermiteCap: number
+  normalGatingHermiteKnee: number
+  submersionGatingEnabled: boolean
 }
 
-type TransformedShapeBounds = {
-  aabb: BoundsRect
-  area: number
-  polygon: StagePoint[]
+type GatingPlotValue = {
+  hermiteCap: number
+  hermiteKnee: number
+}
+
+type BlendingPanelValues = BlendingControls & {
+  normalGatePlot: GatingPlotValue
+}
+
+type ShapeSdfSample = {
+  shape: ShapeState
+  distance: number
+  normal: StagePoint
+  submergedArea: number
 }
 
 type InteractionState =
@@ -125,20 +152,78 @@ const INITIAL_SHAPES: ShapeState[] = [
   },
 ]
 
+const normalGatePlotControl = createPlugin<
+  { value: GatingPlotValue },
+  GatingPlotValue,
+  Record<string, never>
+>({
+  normalize: (input) => ({ value: input.value }),
+  component: GatingPlotControl,
+})
+
 export default function App() {
   const stageRef = useRef<HTMLDivElement | null>(null)
   const interactionRef = useRef<InteractionState | null>(null)
   const [shapes, setShapes] = useState(INITIAL_SHAPES)
-  const [normalGatingEnabled, setNormalGatingEnabled] = useState(true)
-  const [normalGatingMode, setNormalGatingMode] = useState<NormalDivergenceBlendMode>('half-chord')
-  const [blendInfluenceGatingEnabled, setBlendInfluenceGatingEnabled] = useState(BLEND_INFLUENCE_GATING_ENABLED)
-  const [blendInfluenceMinK, setBlendInfluenceMinK] = useState(BLEND_INFLUENCE_MIN_K)
-  const [blendInfluencePeriod, setBlendInfluencePeriod] = useState(BLEND_INFLUENCE_PERIOD)
-  const [blendInfluenceDelay, setBlendInfluenceDelay] = useState(BLEND_INFLUENCE_DELAY)
-  const [boundsVisible, setBoundsVisible] = useState(false)
+  const [{
+    blendingDistance,
+    boundsVisible,
+    cornerRadius,
+    normalGatingEnabled,
+    normalGatingHermiteCap,
+    normalGatingHermiteKnee,
+    submersionGatingEnabled,
+  }, setControls] = useControls(() => ({
+    blendingDistance: {
+      value: CONTAINER_SPACING,
+      min: MIN_CONTAINER_SPACING,
+      max: MAX_CONTAINER_SPACING,
+      step: 1,
+      label: 'Glass blend distance',
+    },
+    cornerRadius: {
+      value: GLASS_CORNER_RADIUS,
+      min: MIN_GLASS_CORNER_RADIUS,
+      max: MAX_GLASS_CORNER_RADIUS,
+      step: 1,
+      label: 'Glass corner radius',
+    },
+    normalGatingEnabled: {
+      value: true,
+      label: 'Enable normal gating',
+    },
+    normalGatingHermiteKnee: {
+      value: NORMAL_GATING_HERMITE_KNEE,
+      min: MIN_NORMAL_GATING_HERMITE_PARAMETER,
+      max: MAX_NORMAL_GATING_HERMITE_PARAMETER,
+      step: NORMAL_GATING_HERMITE_PARAMETER_STEP,
+      label: 'Hermite cap knee',
+    },
+    normalGatingHermiteCap: {
+      value: NORMAL_GATING_HERMITE_CAP,
+      min: MIN_NORMAL_GATING_HERMITE_PARAMETER,
+      max: MAX_NORMAL_GATING_HERMITE_PARAMETER,
+      step: NORMAL_GATING_HERMITE_PARAMETER_STEP,
+      label: 'Hermite cap value',
+    },
+    normalGatePlot: normalGatePlotControl({
+      value: {
+        hermiteCap: NORMAL_GATING_HERMITE_CAP,
+        hermiteKnee: NORMAL_GATING_HERMITE_KNEE,
+      },
+      label: 'Normal gating graph',
+    }),
+    submersionGatingEnabled: {
+      value: SUBMERSION_GATING_ENABLED,
+      label: 'Enable submersion gating',
+    },
+    boundsVisible: {
+      value: false,
+      label: 'Show debug overlay',
+    },
+  }), []) as unknown as [BlendingPanelValues, (values: Partial<BlendingPanelValues>) => void]
   const [stageSize, setStageSize] = useState<StageSize>({ width: 0, height: 0 })
-  const [blendingDistance, setBlendingDistance] = useState(CONTAINER_SPACING)
-  const [hoveredGatingCurve, setHoveredGatingCurve] = useState<NormalDivergenceBlendMode | null>(null)
+  const [hoverPoint, setHoverPoint] = useState<StagePoint | null>(null)
 
   useEffect(() => {
     const element = stageRef.current
@@ -158,7 +243,22 @@ export default function App() {
     return () => resizeObserver.disconnect()
   }, [])
 
-  function getStagePoint(event: ReactPointerEvent<HTMLDivElement>): StagePoint {
+  useEffect(() => {
+    if (!boundsVisible) {
+      setHoverPoint(null)
+    }
+  }, [boundsVisible])
+
+  useEffect(() => {
+    setControls({
+      normalGatePlot: {
+        hermiteCap: normalGatingHermiteCap,
+        hermiteKnee: normalGatingHermiteKnee,
+      },
+    })
+  }, [normalGatingHermiteCap, normalGatingHermiteKnee, setControls])
+
+  function getStagePoint(event: ReactPointerEvent<HTMLElement>): StagePoint {
     const bounds = stageRef.current?.getBoundingClientRect()
     if (!bounds) {
       return { x: 0, y: 0 }
@@ -168,6 +268,18 @@ export default function App() {
       x: event.clientX - bounds.left - bounds.width * 0.5,
       y: event.clientY - bounds.top - bounds.height * 0.5,
     }
+  }
+
+  function updateHoverPoint(event: ReactPointerEvent<HTMLElement>) {
+    if (!boundsVisible) {
+      return
+    }
+
+    setHoverPoint(getStagePoint(event))
+  }
+
+  function clearHoverPoint() {
+    setHoverPoint(null)
   }
 
   function updateShape(shapeId: ShapeId, patch: Partial<ShapeState>) {
@@ -252,8 +364,18 @@ export default function App() {
 
   return (
     <main className="blending-app">
+      <Leva
+        collapsed={false}
+        oneLineLabels
+        theme={{ sizes: { controlWidth: '190px', rootWidth: '360px' } }}
+      />
       <div className="blending-demo">
-        <section ref={stageRef} className="blending-stage">
+        <section
+          ref={stageRef}
+          className={`blending-stage ${boundsVisible ? 'visualizing' : ''}`}
+          onPointerMove={updateHoverPoint}
+          onPointerLeave={clearHoverPoint}
+        >
           <LiquidCanvas className="blending-canvas-shell" canvasClassName="blending-canvas">
             <ZStack alignment="center">
               <Html zIndex={-1} sizing="fill">
@@ -268,12 +390,12 @@ export default function App() {
                 <GlassContainer
                   blur={7}
                   spacing={blendingDistance}
-                  normalDivergenceBlendEnabled={normalGatingEnabled}
-                  normalDivergenceBlendMode={normalGatingMode}
-                  exposureBlendSubmergedAreaModulationEnabled={blendInfluenceGatingEnabled}
-                  exposureBlendSubmergedAreaMinStrength={blendInfluenceMinK}
-                  exposureBlendSubmergedAreaPeriod={blendInfluencePeriod}
-                  exposureBlendSubmergedAreaDelay={blendInfluenceDelay}
+                  normalGating={{
+                    enabled: normalGatingEnabled,
+                    hermiteCap: normalGatingHermiteCap,
+                    hermiteKnee: normalGatingHermiteKnee,
+                  }}
+                  submersionGating={submersionGatingEnabled}
                   bezelWidth={18}
                   displacementBlur={8}
                   thickness={86}
@@ -294,7 +416,7 @@ export default function App() {
                         rotation={shape.rotation}
                         origin={GLASS_ORIGIN}
                       >
-                        <Glass cornerRadius={GLASS_CORNER_RADIUS}>
+                        <Glass cornerRadius={cornerRadius}>
                           <Frame width={shape.width} height={shape.height} />
                         </Glass>
                       </Transform>
@@ -306,9 +428,16 @@ export default function App() {
           </LiquidCanvas>
           {boundsVisible && stageSize.width > 0 && stageSize.height > 0 && (
             <BoundsOverlay
+              blendingDistance={blendingDistance}
+              cornerRadius={cornerRadius}
+              hermiteCap={normalGatingHermiteCap}
+              hermiteKnee={normalGatingHermiteKnee}
+              hoverPoint={hoverPoint}
+              normalGatingEnabled={normalGatingEnabled}
               opacity={SAMPLE_VISUALIZATION_OPACITY}
               shapes={shapes}
               stageSize={stageSize}
+              submersionGatingEnabled={submersionGatingEnabled}
             />
           )}
 
@@ -338,115 +467,55 @@ export default function App() {
               </div>
             ))}
           </div>
-
-          <div className="blending-controls">
-            <button
-              aria-pressed={normalGatingEnabled}
-              className={`blending-toggle ${normalGatingEnabled ? 'active' : ''}`}
-              type="button"
-              onClick={() => setNormalGatingEnabled((enabled) => !enabled)}
-            >
-              <span className="blending-toggle-checkbox" aria-hidden="true" />
-              Normal gating
-            </button>
-            <button
-              aria-pressed={blendInfluenceGatingEnabled}
-              className={`blending-toggle ${blendInfluenceGatingEnabled ? 'active' : ''}`}
-              type="button"
-              onClick={() => setBlendInfluenceGatingEnabled((enabled) => !enabled)}
-            >
-              <span className="blending-toggle-checkbox" aria-hidden="true" />
-              Blend influence
-            </button>
-            <button
-              aria-pressed={boundsVisible}
-              className={`blending-toggle ${boundsVisible ? 'active' : ''}`}
-              type="button"
-              onClick={() => setBoundsVisible((visible) => !visible)}
-            >
-              <span className="blending-toggle-checkbox" aria-hidden="true" />
-              Bounds
-            </button>
-            <label className="blending-distance-control">
-              <span>Blending distance</span>
-              <input
-                aria-label="Blending distance"
-                max={MAX_CONTAINER_SPACING}
-                min={MIN_CONTAINER_SPACING}
-                type="range"
-                value={blendingDistance}
-                onChange={(event) => setBlendingDistance(event.currentTarget.valueAsNumber)}
-              />
-              <output>{blendingDistance}</output>
-            </label>
-            <label className="blending-mode-control">
-              <span>Gating mode</span>
-              <select
-                aria-label="Gating mode"
-                value={normalGatingMode}
-                onChange={(event) => setNormalGatingMode(event.currentTarget.value as NormalDivergenceBlendMode)}
-              >
-                {NORMAL_GATING_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
         </section>
-        <GatingPlot
-          hoveredCurve={hoveredGatingCurve}
-          onHoveredCurveChange={setHoveredGatingCurve}
-        />
-        <BlendInfluenceKPlot
-          delay={blendInfluenceDelay}
-          minK={blendInfluenceMinK}
-          period={blendInfluencePeriod}
-        />
-        <div className="blending-parameter-controls">
-          <ScalarSlider
-            label="Min k"
-            max={MAX_BLEND_INFLUENCE_MIN_K}
-            min={MIN_BLEND_INFLUENCE_MIN_K}
-            step={BLEND_INFLUENCE_MIN_K_STEP}
-            value={blendInfluenceMinK}
-            onChange={setBlendInfluenceMinK}
-          />
-          <ScalarSlider
-            label="Period"
-            max={MAX_BLEND_INFLUENCE_PERIOD}
-            min={MIN_BLEND_INFLUENCE_PERIOD}
-            step={BLEND_INFLUENCE_PERIOD_STEP}
-            value={blendInfluencePeriod}
-            onChange={setBlendInfluencePeriod}
-          />
-          <ScalarSlider
-            label="Delay"
-            max={MAX_BLEND_INFLUENCE_DELAY}
-            min={MIN_BLEND_INFLUENCE_DELAY}
-            step={BLEND_INFLUENCE_DELAY_STEP}
-            value={blendInfluenceDelay}
-            onChange={setBlendInfluenceDelay}
-          />
-        </div>
       </div>
     </main>
   )
 }
 
+function GatingPlotControl() {
+  const { value } = useInputContext<{ value: GatingPlotValue }>()
+
+  return (
+    <div className="leva-gating-plot-control">
+      <GatingPlot
+        hermiteCap={value.hermiteCap}
+        hermiteKnee={value.hermiteKnee}
+      />
+    </div>
+  )
+}
+
 type GatingPlotProps = {
-  hoveredCurve: NormalDivergenceBlendMode | null
-  onHoveredCurveChange: (curve: NormalDivergenceBlendMode | null) => void
+  hermiteCap: number
+  hermiteKnee: number
 }
 
 type BoundsOverlayProps = {
+  blendingDistance: number
+  cornerRadius: number
+  hermiteCap: number
+  hermiteKnee: number
+  hoverPoint: StagePoint | null
+  normalGatingEnabled: boolean
   opacity: number
   shapes: ShapeState[]
   stageSize: StageSize
+  submersionGatingEnabled: boolean
 }
 
-function BoundsOverlay({ opacity, shapes, stageSize }: BoundsOverlayProps) {
+function BoundsOverlay({
+  blendingDistance,
+  cornerRadius,
+  hermiteCap,
+  hermiteKnee,
+  hoverPoint,
+  normalGatingEnabled,
+  opacity,
+  shapes,
+  stageSize,
+  submersionGatingEnabled,
+}: BoundsOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
   useEffect(() => {
@@ -475,10 +544,12 @@ function BoundsOverlay({ opacity, shapes, stageSize }: BoundsOverlayProps) {
     context.scale(dpr, dpr)
     context.translate(stageSize.width * 0.5, stageSize.height * 0.5)
 
-    const shapeBounds = shapes.map((shape) => ({
+    const shapeBounds: ShapeBoundsEntry[] = shapes.map((shape) => ({
       bounds: shapeBoundsFromState(shape),
+      cellBounds: shapeCellBoundsFromState(shape),
       shape,
     }))
+    const submergedAreasByShape = new Map<ShapeId, ShapeSubmergedAreas>()
 
     for (const { bounds } of shapeBounds) {
       for (const other of shapeBounds) {
@@ -500,8 +571,25 @@ function BoundsOverlay({ opacity, shapes, stageSize }: BoundsOverlayProps) {
       }
     }
 
-    for (const { bounds, shape } of shapeBounds) {
-      const submergedArea = estimateBoundsSubmersion(shapeBounds, shape.id)
+    for (const entry of shapeBounds) {
+      const { bounds, cellBounds, shape } = entry
+      const cellSubmersions = estimateShapeCellSubmersions(shapeBounds, entry)
+      submergedAreasByShape.set(shape.id, cellSubmersions)
+      const cellEntries = [
+        { bounds: cellBounds.topLeft, localX: shape.width * 0.25, localY: shape.height * 0.25, value: cellSubmersions.topLeft },
+        { bounds: cellBounds.topRight, localX: shape.width * 0.75, localY: shape.height * 0.25, value: cellSubmersions.topRight },
+        { bounds: cellBounds.bottomLeft, localX: shape.width * 0.25, localY: shape.height * 0.75, value: cellSubmersions.bottomLeft },
+        { bounds: cellBounds.bottomRight, localX: shape.width * 0.75, localY: shape.height * 0.75, value: cellSubmersions.bottomRight },
+      ]
+
+      for (const cell of cellEntries) {
+        drawPolygon(context, cell.bounds.polygon, {
+          fill: colorWithAlpha(shapeColor(shape.id), 0.08 + cell.value * 0.22),
+          stroke: colorWithAlpha(shapeColor(shape.id), 0.34),
+          width: 1,
+        })
+      }
+
       drawPolygon(context, bounds.polygon, {
         stroke: colorWithAlpha(shapeColor(shape.id), 0.94),
         width: 2,
@@ -513,19 +601,45 @@ function BoundsOverlay({ opacity, shapes, stageSize }: BoundsOverlayProps) {
       context.font = '600 12px Inter, ui-sans-serif, system-ui, sans-serif'
       context.textAlign = 'left'
       context.textBaseline = 'top'
-      const label = `${Math.round(submergedArea * 100)}%`
-      const labelX = -shape.width * 0.5 + 8
-      const labelY = -shape.height * 0.5 + 8
       context.save()
       context.translate(shape.x, shape.y)
       context.rotate(shape.rotation)
-      context.strokeText(label, labelX, labelY)
-      context.fillText(label, labelX, labelY)
+      context.textAlign = 'center'
+      context.textBaseline = 'middle'
+      for (const cell of cellEntries) {
+        const label = `${Math.round(cell.value * 100)}%`
+        const labelX = cell.localX - shape.width * 0.5
+        const labelY = cell.localY - shape.height * 0.5
+        context.strokeText(label, labelX, labelY)
+        context.fillText(label, labelX, labelY)
+      }
       context.restore()
     }
 
+    if (hoverPoint) {
+      drawNormalGateVisualization(context, hoverPoint, shapes, stageSize, {
+        blendingDistance,
+        cornerRadius,
+        enabled: normalGatingEnabled,
+        hermiteCap,
+        hermiteKnee,
+        submergedAreasByShape,
+        submersionGatingEnabled,
+      })
+    }
+
     context.restore()
-  }, [shapes, stageSize])
+  }, [
+    blendingDistance,
+    cornerRadius,
+    hermiteCap,
+    hermiteKnee,
+    hoverPoint,
+    normalGatingEnabled,
+    shapes,
+    stageSize,
+    submersionGatingEnabled,
+  ])
 
   return (
     <canvas
@@ -537,28 +651,11 @@ function BoundsOverlay({ opacity, shapes, stageSize }: BoundsOverlayProps) {
   )
 }
 
-type GatingCurve = {
-  id: NormalDivergenceBlendMode
-  label: string
-  path: string
-}
-
 function GatingPlot({
-  hoveredCurve,
-  onHoveredCurveChange,
+  hermiteCap,
+  hermiteKnee,
 }: GatingPlotProps) {
-  const curves: GatingCurve[] = [
-    {
-      id: 'half-chord',
-      label: 'Half-chord',
-      path: createGatingPath((angle) => Math.sin(angle * 0.5)),
-    },
-    {
-      id: 'angle',
-      label: 'Angle',
-      path: createGatingPath((angle) => angle / Math.PI),
-    },
-  ]
+  const path = createGatingPath((angle) => hermiteCapGate(angle / Math.PI, hermiteKnee, hermiteCap))
   const xTicks = [0, 45, 90, 135, 180]
   const yTicks = [0, 0.25, 0.5, 0.75, 1]
 
@@ -588,147 +685,9 @@ function GatingPlot({
           ))}
         </g>
         <path className="blending-plot-axis" d={`M${PLOT_MARGIN.left} ${PLOT_MARGIN.top}V${PLOT_HEIGHT - PLOT_MARGIN.bottom}H${PLOT_WIDTH - PLOT_MARGIN.right}`} />
-        {curves.map((curve) => (
-          <path
-            key={curve.id}
-            className={`blending-plot-line ${curve.id} ${hoveredCurve && hoveredCurve !== curve.id ? 'dimmed' : ''}`}
-            d={curve.path}
-          />
-        ))}
-        <g className="blending-plot-labels">
-          {xTicks.map((tick) => (
-            <text key={`x-label-${tick}`} x={plotX((tick / 180) * Math.PI)} y={PLOT_HEIGHT - 12} textAnchor="middle">
-              {tick}
-            </text>
-          ))}
-          {yTicks.map((tick) => (
-            <text key={`y-label-${tick}`} x={PLOT_MARGIN.left - 10} y={plotY(tick) + 4} textAnchor="end">
-              {tick.toFixed(tick === 0 || tick === 1 ? 0 : 2)}
-            </text>
-          ))}
-          <text x={(PLOT_WIDTH + PLOT_MARGIN.left - PLOT_MARGIN.right) * 0.5} y={PLOT_HEIGHT - 3} textAnchor="middle">
-            angle
-          </text>
-          <text x={16} y={(PLOT_HEIGHT + PLOT_MARGIN.top - PLOT_MARGIN.bottom) * 0.5} textAnchor="middle" transform={`rotate(-90 16 ${(PLOT_HEIGHT + PLOT_MARGIN.top - PLOT_MARGIN.bottom) * 0.5})`}>
-            g
-          </text>
-        </g>
-      </svg>
-      <div className="blending-plot-legend">
-        {curves.map((curve) => (
-          <span
-            key={curve.id}
-            className={curve.id}
-            onMouseEnter={() => onHoveredCurveChange(curve.id)}
-            onMouseLeave={() => onHoveredCurveChange(null)}
-            onPointerEnter={() => onHoveredCurveChange(curve.id)}
-            onPointerLeave={() => onHoveredCurveChange(null)}
-          >
-            {curve.label}
-          </span>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-type BlendInfluenceKPlotProps = {
-  delay: number
-  minK: number
-  period: number
-}
-
-function BlendInfluenceKPlot({ delay, minK, period }: BlendInfluenceKPlotProps) {
-  const lowK = clamp01(minK)
-  const yMax = 1
-  const path = createBlendInfluenceKPath((influence) => (
-    blendInfluenceKScale(influence, lowK, period, delay)
-  ), yMax)
-  const xTicks = [0, 0.25, 0.5, 0.75, 1]
-  const yTicks = [0, yMax * 0.25, yMax * 0.5, yMax * 0.75, yMax]
-  const yLabelStep = 0.01
-
-  return (
-    <section className="blending-plot submerged-k-plot" aria-label="Blend influence k curve plot">
-      <svg className="blending-plot-svg" viewBox={`0 0 ${PLOT_WIDTH} ${PLOT_HEIGHT}`} role="img">
-        <title>Blend influence k curve</title>
-        <desc>Plot of smooth-min k scale against normalized blend-influence area.</desc>
-        <g className="blending-plot-grid">
-          {yTicks.map((tick) => (
-            <line
-              key={`y-${tick}`}
-              x1={PLOT_MARGIN.left}
-              x2={PLOT_WIDTH - PLOT_MARGIN.right}
-              y1={plotYForRange(tick, yMax)}
-              y2={plotYForRange(tick, yMax)}
-            />
-          ))}
-          {xTicks.map((tick) => (
-            <line
-              key={`x-${tick}`}
-              x1={plotXForUnit(tick)}
-              x2={plotXForUnit(tick)}
-              y1={PLOT_MARGIN.top}
-              y2={PLOT_HEIGHT - PLOT_MARGIN.bottom}
-            />
-          ))}
-        </g>
-        <path className="blending-plot-axis" d={`M${PLOT_MARGIN.left} ${PLOT_MARGIN.top}V${PLOT_HEIGHT - PLOT_MARGIN.bottom}H${PLOT_WIDTH - PLOT_MARGIN.right}`} />
-        <path className="blending-plot-line submerged-k" d={path} />
-        <g className="blending-plot-labels">
-          {xTicks.map((tick) => (
-            <text key={`x-label-${tick}`} x={plotXForUnit(tick)} y={PLOT_HEIGHT - 12} textAnchor="middle">
-              {tick.toFixed(tick === 0 || tick === 1 ? 0 : 2)}
-            </text>
-          ))}
-          {yTicks.map((tick) => (
-            <text key={`y-label-${tick}`} x={PLOT_MARGIN.left - 10} y={plotYForRange(tick, yMax) + 4} textAnchor="end">
-              {formatParameterValue(tick, yLabelStep)}
-            </text>
-          ))}
-          <text x={(PLOT_WIDTH + PLOT_MARGIN.left - PLOT_MARGIN.right) * 0.5} y={PLOT_HEIGHT - 3} textAnchor="middle">
-            blend influence
-          </text>
-          <text x={16} y={(PLOT_HEIGHT + PLOT_MARGIN.top - PLOT_MARGIN.bottom) * 0.5} textAnchor="middle" transform={`rotate(-90 16 ${(PLOT_HEIGHT + PLOT_MARGIN.top - PLOT_MARGIN.bottom) * 0.5})`}>
-            k
-          </text>
-        </g>
+        <path className="blending-plot-line hermite-cap" d={path} />
       </svg>
     </section>
-  )
-}
-
-type ScalarSliderProps = {
-  label: string
-  max: number
-  min: number
-  step: number
-  value: number
-  onChange: (value: number) => void
-}
-
-function ScalarSlider({
-  label,
-  max,
-  min,
-  step,
-  value,
-  onChange,
-}: ScalarSliderProps) {
-  return (
-    <label className="blending-parameter-control">
-      <span>{label}</span>
-      <input
-        aria-label={label}
-        max={max}
-        min={min}
-        step={step}
-        type="range"
-        value={value}
-        onChange={(event) => onChange(event.currentTarget.valueAsNumber)}
-      />
-      <output>{formatParameterValue(value, step)}</output>
-    </label>
   )
 }
 
@@ -740,24 +699,6 @@ function createGatingPath(resolveGate: (angle: number) => number) {
   }).join(' ')
 }
 
-function createBlendInfluenceKPath(resolveK: (influence: number) => number, yMax: number) {
-  return Array.from({ length: PLOT_STEPS + 1 }, (_, index) => {
-    const influence = index / PLOT_STEPS
-    const command = index === 0 ? 'M' : 'L'
-    return `${command}${plotXForUnit(influence).toFixed(2)} ${plotYForRange(resolveK(influence), yMax).toFixed(2)}`
-  }).join(' ')
-}
-
-function blendInfluenceKScale(influence: number, lowK: number, period: number, delay: number) {
-  const delayedInfluence = Math.max(influence - delay, 0) / Math.max(1 - delay, SDF_EPSILON)
-  const curve = shapedCosine01(delayedInfluence * Math.max(period, SDF_EPSILON))
-  return lowK + (1 - lowK) * curve
-}
-
-function shapedCosine01(value: number) {
-  return 0.5 + 0.5 * Math.cos(value * Math.PI * 2)
-}
-
 function plotX(angle: number) {
   const width = PLOT_WIDTH - PLOT_MARGIN.left - PLOT_MARGIN.right
   return PLOT_MARGIN.left + (angle / Math.PI) * width
@@ -766,25 +707,6 @@ function plotX(angle: number) {
 function plotY(gate: number) {
   const height = PLOT_HEIGHT - PLOT_MARGIN.top - PLOT_MARGIN.bottom
   return PLOT_MARGIN.top + (1 - clamp01(gate)) * height
-}
-
-function plotXForUnit(value: number) {
-  const width = PLOT_WIDTH - PLOT_MARGIN.left - PLOT_MARGIN.right
-  return PLOT_MARGIN.left + clamp01(value) * width
-}
-
-function plotYForRange(value: number, maxValue: number) {
-  const height = PLOT_HEIGHT - PLOT_MARGIN.top - PLOT_MARGIN.bottom
-  const normalizedValue = maxValue <= 0.0001 ? 0 : value / maxValue
-  return PLOT_MARGIN.top + (1 - clamp01(normalizedValue)) * height
-}
-
-function clamp01(value: number) {
-  return Math.min(Math.max(value, 0), 1)
-}
-
-function formatParameterValue(value: number, step: number) {
-  return step >= 0.1 ? value.toFixed(1) : value.toFixed(2)
 }
 
 function shapeLocalPointToStagePoint(shape: ShapeState, localX: number, localY: number): StagePoint {
@@ -801,8 +723,7 @@ function getDevicePixelRatio() {
   return typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1
 }
 
-type ShapeBoundsEntry = {
-  bounds: TransformedShapeBounds
+type ShapeBoundsEntry = ShapeSubmersionEntry & {
   shape: ShapeState
 }
 
@@ -820,167 +741,30 @@ function shapeBoundsFromState(shape: ShapeState): TransformedShapeBounds {
   }
 }
 
-function aabbFromPoints(points: StagePoint[]): BoundsRect {
-  return points.reduce<BoundsRect>((bounds, point) => ({
-    minX: Math.min(bounds.minX, point.x),
-    minY: Math.min(bounds.minY, point.y),
-    maxX: Math.max(bounds.maxX, point.x),
-    maxY: Math.max(bounds.maxY, point.y),
-  }), {
-    minX: Number.POSITIVE_INFINITY,
-    minY: Number.POSITIVE_INFINITY,
-    maxX: Number.NEGATIVE_INFINITY,
-    maxY: Number.NEGATIVE_INFINITY,
-  })
-}
+function shapeCellBoundsFromState(shape: ShapeState): ShapeSubmergedAreasOf<TransformedShapeBounds> {
+  const halfWidth = shape.width * 0.5
+  const halfHeight = shape.height * 0.5
+  const cellBounds = (minX: number, minY: number, maxX: number, maxY: number) => {
+    const polygon = [
+      shapeLocalPointToStagePoint(shape, minX, minY),
+      shapeLocalPointToStagePoint(shape, maxX, minY),
+      shapeLocalPointToStagePoint(shape, maxX, maxY),
+      shapeLocalPointToStagePoint(shape, minX, maxY),
+    ]
 
-function aabbArea(bounds: BoundsRect) {
-  return Math.max(bounds.maxX - bounds.minX, 0) * Math.max(bounds.maxY - bounds.minY, 0)
-}
-
-function intersectBounds(left: BoundsRect, right: BoundsRect): BoundsRect | null {
-  const intersection = {
-    minX: Math.max(left.minX, right.minX),
-    minY: Math.max(left.minY, right.minY),
-    maxX: Math.min(left.maxX, right.maxX),
-    maxY: Math.min(left.maxY, right.maxY),
-  }
-  return aabbArea(intersection) > SDF_EPSILON ? intersection : null
-}
-
-function cross(ax: number, ay: number, bx: number, by: number) {
-  return ax * by - ay * bx
-}
-
-function polygonSignedArea(points: StagePoint[]) {
-  let area = 0
-  for (let index = 0; index < points.length; index += 1) {
-    const current = points[index]
-    const next = points[(index + 1) % points.length]
-    area += current.x * next.y - next.x * current.y
-  }
-  return area * 0.5
-}
-
-function polygonArea(points: StagePoint[]) {
-  return Math.abs(polygonSignedArea(points))
-}
-
-function isInsideClipEdge(point: StagePoint, edgeStart: StagePoint, edgeEnd: StagePoint, clipWinding: number) {
-  const edgeCross = cross(
-    edgeEnd.x - edgeStart.x,
-    edgeEnd.y - edgeStart.y,
-    point.x - edgeStart.x,
-    point.y - edgeStart.y,
-  )
-  return clipWinding >= 0 ? edgeCross >= -SDF_EPSILON : edgeCross <= SDF_EPSILON
-}
-
-function intersectLines(
-  lineStart: StagePoint,
-  lineEnd: StagePoint,
-  clipStart: StagePoint,
-  clipEnd: StagePoint,
-): StagePoint {
-  const lineX = lineEnd.x - lineStart.x
-  const lineY = lineEnd.y - lineStart.y
-  const clipX = clipEnd.x - clipStart.x
-  const clipY = clipEnd.y - clipStart.y
-  const denominator = cross(lineX, lineY, clipX, clipY)
-  if (Math.abs(denominator) <= SDF_EPSILON) {
-    return lineEnd
+    return {
+      aabb: aabbFromPoints(polygon),
+      area: polygonArea(polygon),
+      polygon,
+    }
   }
 
-  const t = cross(clipStart.x - lineStart.x, clipStart.y - lineStart.y, clipX, clipY) / denominator
   return {
-    x: lineStart.x + lineX * t,
-    y: lineStart.y + lineY * t,
+    topLeft: cellBounds(0, 0, halfWidth, halfHeight),
+    topRight: cellBounds(halfWidth, 0, shape.width, halfHeight),
+    bottomLeft: cellBounds(0, halfHeight, halfWidth, shape.height),
+    bottomRight: cellBounds(halfWidth, halfHeight, shape.width, shape.height),
   }
-}
-
-function clipPolygonToEdge(subject: StagePoint[], clipStart: StagePoint, clipEnd: StagePoint, clipWinding: number) {
-  const output: StagePoint[] = []
-  if (subject.length === 0) {
-    return output
-  }
-
-  let previous = subject[subject.length - 1]
-  let previousInside = isInsideClipEdge(previous, clipStart, clipEnd, clipWinding)
-  for (const current of subject) {
-    const currentInside = isInsideClipEdge(current, clipStart, clipEnd, clipWinding)
-    if (currentInside !== previousInside) {
-      output.push(intersectLines(previous, current, clipStart, clipEnd))
-    }
-    if (currentInside) {
-      output.push(current)
-    }
-    previous = current
-    previousInside = currentInside
-  }
-  return output
-}
-
-function intersectConvexPolygons(subject: StagePoint[], clip: StagePoint[]) {
-  let output = subject
-  const clipWinding = polygonSignedArea(clip)
-  for (let index = 0; index < clip.length && output.length >= 3; index += 1) {
-    output = clipPolygonToEdge(output, clip[index], clip[(index + 1) % clip.length], clipWinding)
-  }
-  return output.length >= 3 ? output : []
-}
-
-function polygonUnionArea(polygons: StagePoint[][], maxArea: number) {
-  if (polygons.length === 0) {
-    return 0
-  }
-  if (polygons.length > 8) {
-    return Math.min(polygons.reduce((area, polygon) => area + polygonArea(polygon), 0), maxArea)
-  }
-
-  let area = 0
-  const accumulate = (startIndex: number, currentPolygon: StagePoint[] | null, subsetSize: number) => {
-    for (let index = startIndex; index < polygons.length; index += 1) {
-      const nextPolygon = currentPolygon
-        ? intersectConvexPolygons(currentPolygon, polygons[index])
-        : polygons[index]
-      const nextArea = polygonArea(nextPolygon)
-      if (nextArea <= SDF_EPSILON) {
-        continue
-      }
-
-      const nextSubsetSize = subsetSize + 1
-      area += nextSubsetSize % 2 === 1 ? nextArea : -nextArea
-      accumulate(index + 1, nextPolygon, nextSubsetSize)
-    }
-  }
-  accumulate(0, null, 0)
-  return Math.min(Math.max(area, 0), maxArea)
-}
-
-function estimateBoundsSubmersion(entries: ShapeBoundsEntry[], shapeId: ShapeId) {
-  const entry = entries.find((candidate) => candidate.shape.id === shapeId)
-  if (!entry) {
-    return 0
-  }
-
-  const shapeArea = entry.bounds.area
-  if (shapeArea <= SDF_EPSILON) {
-    return 0
-  }
-
-  const overlaps = entries.flatMap((other) => {
-    if (other.shape.id === shapeId) {
-      return []
-    }
-    if (!intersectBounds(entry.bounds.aabb, other.bounds.aabb)) {
-      return []
-    }
-
-    const overlap = intersectConvexPolygons(entry.bounds.polygon, other.bounds.polygon)
-    return polygonArea(overlap) > SDF_EPSILON ? [overlap] : []
-  })
-
-  return clamp01(polygonUnionArea(overlaps, shapeArea) / shapeArea)
 }
 
 function drawPolygon(
@@ -1012,6 +796,259 @@ function drawPolygon(
     context.lineWidth = options.width ?? 1
     context.stroke()
   }
+  context.restore()
+}
+
+type NormalGateVisualizationOptions = {
+  blendingDistance: number
+  cornerRadius: number
+  enabled: boolean
+  hermiteCap: number
+  hermiteKnee: number
+  submergedAreasByShape: Map<ShapeId, ShapeSubmergedAreas>
+  submersionGatingEnabled: boolean
+}
+
+function drawNormalGateVisualization(
+  context: CanvasRenderingContext2D,
+  point: StagePoint,
+  shapes: ShapeState[],
+  stageSize: StageSize,
+  options: NormalGateVisualizationOptions,
+) {
+  const emptySubmergedAreas = createEmptySubmergedAreas()
+  const samples = shapes
+    .map((shape) => shapeSdfSampleAtPoint(
+      shape,
+      point,
+      options.cornerRadius,
+      options.submergedAreasByShape.get(shape.id) ?? emptySubmergedAreas,
+    ))
+    .sort((left, right) => left.distance - right.distance)
+
+  if (samples.length === 0) {
+    return
+  }
+
+  drawHoverMarker(context, point)
+
+  const primary = samples[0]
+  const secondary = samples[1]
+  drawNormalVector(context, point, primary.normal, colorWithAlpha(shapeColor(primary.shape.id), 0.98), secondary ? -4 : 0)
+
+  if (!secondary) {
+    return
+  }
+
+  drawNormalVector(context, point, secondary.normal, colorWithAlpha(shapeColor(secondary.shape.id), 0.98), 4)
+  const gateInfo = normalGateForSamples(primary, secondary, options)
+  drawNormalGateReadout(context, point, stageSize, gateInfo, options)
+}
+
+function shapeSdfSampleAtPoint(
+  shape: ShapeState,
+  point: StagePoint,
+  cornerRadius: number,
+  submergedAreas: ShapeSubmergedAreas,
+): ShapeSdfSample {
+  const local = stagePointToShapeLocal(point, shape)
+  const halfWidth = shape.width * 0.5
+  const halfHeight = shape.height * 0.5
+  const radius = Math.min(Math.max(cornerRadius, 0), halfWidth, halfHeight)
+  const q = {
+    x: Math.abs(local.x) - halfWidth + radius,
+    y: Math.abs(local.y) - halfHeight + radius,
+  }
+  const outside = {
+    x: Math.max(q.x, 0),
+    y: Math.max(q.y, 0),
+  }
+  const distance = Math.hypot(outside.x, outside.y) + Math.min(Math.max(q.x, q.y), 0) - radius
+  const localNormal = roundedRectLocalNormal(local, q, outside)
+
+  return {
+    distance,
+    normal: normalizeVector(rotateLocalVector(localNormal.x, localNormal.y, shape.rotation)),
+    shape,
+    submergedArea: shapeSubmergedAreaAtCenteredLocal(local, shape, submergedAreas),
+  }
+}
+
+function roundedRectLocalNormal(
+  local: StagePoint,
+  q: StagePoint,
+  outside: StagePoint,
+): StagePoint {
+  const signX = local.x < 0 ? -1 : 1
+  const signY = local.y < 0 ? -1 : 1
+
+  if (outside.x > SDF_EPSILON || outside.y > SDF_EPSILON) {
+    return normalizeVector({
+      x: outside.x * signX,
+      y: outside.y * signY,
+    })
+  }
+
+  if (q.x > q.y) {
+    return { x: signX, y: 0 }
+  }
+  if (q.y > q.x) {
+    return { x: 0, y: signY }
+  }
+
+  return normalizeVector({ x: signX, y: signY })
+}
+
+function normalizeVector(vector: StagePoint): StagePoint {
+  const length = Math.hypot(vector.x, vector.y)
+  if (length <= SDF_EPSILON) {
+    return { x: 0, y: -1 }
+  }
+
+  return {
+    x: vector.x / length,
+    y: vector.y / length,
+  }
+}
+
+function normalGateForSamples(
+  left: ShapeSdfSample,
+  right: ShapeSdfSample,
+  options: NormalGateVisualizationOptions,
+) {
+  return smoothUnionGatingInfo(
+    left,
+    right,
+    options.blendingDistance,
+    resolveNormalGating({
+      enabled: options.enabled,
+      hermiteCap: options.hermiteCap,
+      hermiteKnee: options.hermiteKnee,
+    }),
+    options.submersionGatingEnabled,
+  )
+}
+
+function drawHoverMarker(context: CanvasRenderingContext2D, point: StagePoint) {
+  context.save()
+  context.fillStyle = 'rgba(0, 0, 0, 0.45)'
+  context.strokeStyle = 'rgba(255, 255, 255, 0.95)'
+  context.lineWidth = 1.5
+  context.beginPath()
+  context.arc(point.x, point.y, 4, 0, Math.PI * 2)
+  context.fill()
+  context.stroke()
+  context.restore()
+}
+
+function drawNormalVector(
+  context: CanvasRenderingContext2D,
+  point: StagePoint,
+  normal: StagePoint,
+  color: string,
+  offset: number,
+) {
+  const perpendicular = { x: -normal.y, y: normal.x }
+  const start = {
+    x: point.x + perpendicular.x * offset,
+    y: point.y + perpendicular.y * offset,
+  }
+  const end = {
+    x: start.x + normal.x * 52,
+    y: start.y + normal.y * 52,
+  }
+
+  context.save()
+  context.lineCap = 'round'
+  context.lineJoin = 'round'
+  context.strokeStyle = 'rgba(0, 0, 0, 0.42)'
+  context.lineWidth = 5
+  traceArrow(context, start, end, normal)
+  context.strokeStyle = color
+  context.lineWidth = 2.25
+  traceArrow(context, start, end, normal)
+  context.restore()
+}
+
+function traceArrow(
+  context: CanvasRenderingContext2D,
+  start: StagePoint,
+  end: StagePoint,
+  normal: StagePoint,
+) {
+  const arrowSize = 7
+  const angle = Math.atan2(normal.y, normal.x)
+  const left = angle + Math.PI * 0.82
+  const right = angle - Math.PI * 0.82
+
+  context.beginPath()
+  context.moveTo(start.x, start.y)
+  context.lineTo(end.x, end.y)
+  context.moveTo(end.x, end.y)
+  context.lineTo(end.x + Math.cos(left) * arrowSize, end.y + Math.sin(left) * arrowSize)
+  context.moveTo(end.x, end.y)
+  context.lineTo(end.x + Math.cos(right) * arrowSize, end.y + Math.sin(right) * arrowSize)
+  context.stroke()
+}
+
+function drawNormalGateReadout(
+  context: CanvasRenderingContext2D,
+  point: StagePoint,
+  stageSize: StageSize,
+  gateInfo: {
+    angle: number
+    blendDistance: number
+    normalGate: number
+    submergedArea: number
+  },
+  options: NormalGateVisualizationOptions,
+) {
+  const padding = 9
+  const width = 166
+  const lineHeight = 15
+  const barWidth = width - padding * 2
+  const barHeight = 5
+  const lines = [
+    `angle ${Math.round((gateInfo.angle / Math.PI) * 180)} deg`,
+    `normal gate ${Math.round(gateInfo.normalGate * 100)}%`,
+    options.submersionGatingEnabled
+      ? `submersion ${Math.round(gateInfo.submergedArea * 100)}%`
+      : 'submersion off',
+    `blend ${gateInfo.blendDistance.toFixed(0)} px`,
+  ]
+  const height = padding * 2 + lineHeight * lines.length + barHeight + 8
+  const halfWidth = stageSize.width * 0.5
+  const halfHeight = stageSize.height * 0.5
+  let x = point.x + 16
+  let y = point.y + 16
+
+  if (x + width > halfWidth - 8) {
+    x = point.x - width - 16
+  }
+  if (y + height > halfHeight - 8) {
+    y = point.y - height - 16
+  }
+  x = Math.min(Math.max(x, -halfWidth + 8), halfWidth - width - 8)
+  y = Math.min(Math.max(y, -halfHeight + 8), halfHeight - height - 8)
+
+  context.save()
+  context.fillStyle = 'rgba(0, 0, 0, 0.68)'
+  context.fillRect(x, y, width, height)
+  context.fillStyle = 'rgba(255, 255, 255, 0.94)'
+  context.font = '600 11px Inter, ui-sans-serif, system-ui, sans-serif'
+  context.textAlign = 'left'
+  context.textBaseline = 'top'
+
+  lines.forEach((line, index) => {
+    context.fillText(line, x + padding, y + padding + index * lineHeight)
+  })
+
+  const barX = x + padding
+  const barY = y + padding + lineHeight * lines.length + 3
+  context.fillStyle = 'rgba(255, 255, 255, 0.22)'
+  context.fillRect(barX, barY, barWidth, barHeight)
+  context.fillStyle = 'rgba(255, 255, 255, 0.9)'
+  context.fillRect(barX, barY, barWidth * gateInfo.normalGate, barHeight)
   context.restore()
 }
 

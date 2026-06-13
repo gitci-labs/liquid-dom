@@ -25,6 +25,12 @@ import {
   type ContainerInit,
   type GlassInit,
 } from './scene'
+import {
+  resolveNormalGating,
+  sameNormalGating,
+  type NormalGating,
+  type ResolvedNormalGating,
+} from './sdf'
 import type {
   Alignment,
   DecorationOptions,
@@ -48,7 +54,6 @@ import type {
   ZStackOptions,
 } from '@liquid-dom/layout'
 import type {
-  NormalDivergenceBlendMode,
   Point,
   RgbaColor,
   SpecularWidth,
@@ -978,63 +983,25 @@ export class GlassContainer extends SingleChildUiNode<LayoutNode, SceneContainer
     }
   }
 
-  get normalDivergenceBlendMode(): NormalDivergenceBlendMode {
-    return this.sceneNode.normalDivergenceBlendMode
+  get normalGating(): ResolvedNormalGating {
+    return this.sceneNode.normalGating
   }
 
-  set normalDivergenceBlendMode(value: NormalDivergenceBlendMode) {
-    if (setProperty(this.sceneNode, 'normalDivergenceBlendMode', value)) {
-      this.invalidateFrame('normalDivergenceBlendMode')
+  set normalGating(value: NormalGating) {
+    const next = resolveNormalGating(value)
+    if (!sameNormalGating(this.sceneNode.normalGating, next)) {
+      this.sceneNode.normalGating = next
+      this.invalidateFrame('normalGating')
     }
   }
 
-  get normalDivergenceBlendEnabled(): boolean {
-    return this.sceneNode.normalDivergenceBlendEnabled
+  get submersionGating(): boolean {
+    return this.sceneNode.submersionGating
   }
 
-  set normalDivergenceBlendEnabled(value: boolean) {
-    if (setProperty(this.sceneNode, 'normalDivergenceBlendEnabled', value)) {
-      this.invalidateFrame('normalDivergenceBlendEnabled')
-    }
-  }
-
-  get exposureBlendSubmergedAreaModulationEnabled(): boolean {
-    return this.sceneNode.exposureBlendSubmergedAreaModulationEnabled
-  }
-
-  set exposureBlendSubmergedAreaModulationEnabled(value: boolean) {
-    if (setProperty(this.sceneNode, 'exposureBlendSubmergedAreaModulationEnabled', value)) {
-      this.invalidateFrame('exposureBlendSubmergedAreaModulationEnabled')
-    }
-  }
-
-  get exposureBlendSubmergedAreaMinStrength(): number {
-    return this.sceneNode.exposureBlendSubmergedAreaMinStrength
-  }
-
-  set exposureBlendSubmergedAreaMinStrength(value: number) {
-    if (setProperty(this.sceneNode, 'exposureBlendSubmergedAreaMinStrength', value)) {
-      this.invalidateFrame('exposureBlendSubmergedAreaMinStrength')
-    }
-  }
-
-  get exposureBlendSubmergedAreaPeriod(): number {
-    return this.sceneNode.exposureBlendSubmergedAreaPeriod
-  }
-
-  set exposureBlendSubmergedAreaPeriod(value: number) {
-    if (setProperty(this.sceneNode, 'exposureBlendSubmergedAreaPeriod', value)) {
-      this.invalidateFrame('exposureBlendSubmergedAreaPeriod')
-    }
-  }
-
-  get exposureBlendSubmergedAreaDelay(): number {
-    return this.sceneNode.exposureBlendSubmergedAreaDelay
-  }
-
-  set exposureBlendSubmergedAreaDelay(value: number) {
-    if (setProperty(this.sceneNode, 'exposureBlendSubmergedAreaDelay', value)) {
-      this.invalidateFrame('exposureBlendSubmergedAreaDelay')
+  set submersionGating(value: boolean) {
+    if (setProperty(this.sceneNode, 'submersionGating', value)) {
+      this.invalidateFrame('submersionGating')
     }
   }
 

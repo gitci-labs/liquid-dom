@@ -8,7 +8,6 @@ import {
   LiquidCanvas,
   Transform,
   ZStack,
-  type NormalDivergenceBlendMode,
 } from '@liquid-dom/react'
 import {
   deleteStoredBackgroundImage,
@@ -26,20 +25,7 @@ const INITIAL_RIGHT_ROTATION_DEGREES = 0
 const INITIAL_SHAPE_SCALE_X = 1
 const INITIAL_SHAPE_SCALE_Y = 1
 const INITIAL_CONTAINER_SPACING = 12
-const INITIAL_NORMAL_DIVERGENCE_BLEND_ENABLED = true
-const INITIAL_NORMAL_DIVERGENCE_BLEND_MODE: NormalDivergenceBlendMode = 'half-chord'
-const NORMAL_DIVERGENCE_BLEND_MODE_OPTIONS = {
-  'Half-chord': 'half-chord',
-  Angle: 'angle',
-  None: 'none',
-  Smoothstep: 'smoothstep',
-  Smootherstep: 'smootherstep',
-  Exponential: 'exponential',
-  Gaussian: 'gaussian',
-  Rational: 'rational',
-  'Beta-CDF': 'beta-cdf',
-  'Logistic Window': 'logistic-window',
-} satisfies Record<string, NormalDivergenceBlendMode>
+const INITIAL_NORMAL_GATING_ENABLED = true
 const INITIAL_BLUR = 7
 const INITIAL_BEZEL_WIDTH = 18
 const INITIAL_DISPLACEMENT_BLUR = 8
@@ -69,8 +55,7 @@ export default function SdfOverlapDemo() {
     shapeScaleX,
     shapeScaleY,
     containerSpacing,
-    normalDivergenceBlendEnabled,
-    normalDivergenceBlendMode,
+    normalGatingEnabled,
     blur,
     bezelWidth,
     displacementBlur,
@@ -136,13 +121,8 @@ export default function SdfOverlapDemo() {
         step: 1,
         label: 'Container spacing',
       },
-      normalDivergenceBlendMode: {
-        value: INITIAL_NORMAL_DIVERGENCE_BLEND_MODE,
-        options: NORMAL_DIVERGENCE_BLEND_MODE_OPTIONS,
-        label: 'Normal gate mode',
-      },
-      normalDivergenceBlendEnabled: {
-        value: INITIAL_NORMAL_DIVERGENCE_BLEND_ENABLED,
+      normalGatingEnabled: {
+        value: INITIAL_NORMAL_GATING_ENABLED,
         label: 'Normal gating',
       },
       cornerRadius: {
@@ -360,8 +340,9 @@ export default function SdfOverlapDemo() {
             <GlassContainer
               blur={blur}
               spacing={containerSpacing}
-              normalDivergenceBlendEnabled={normalDivergenceBlendEnabled}
-              normalDivergenceBlendMode={normalDivergenceBlendMode}
+              normalGating={{
+                enabled: normalGatingEnabled,
+              }}
               bezelWidth={bezelWidth}
               displacementBlur={displacementBlur}
               thickness={86}

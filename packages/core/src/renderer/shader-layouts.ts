@@ -10,13 +10,14 @@ export const GlobalsLayout = structLayout({
   canvas: vec4('width', 'height'),
   container: vec4('opacity'),
   shape: vec4('smoothing', 'bezelWidth', 'shapeCount', 'surfaceProfile'),
-  sdf: vec4('normalDivergenceBlendMode', 'normalDivergenceBlendEnabled'),
+  sdf: vec4('normalGatingEnabled'),
   sdfParams0: vec4(
-    'submergedAreaModulationEnabled',
-    'submergedAreaMinStrength',
-    'submergedAreaPeriod',
+    'submersionGatingEnabled',
   ),
-  sdfParams1: vec4('submergedAreaDelay'),
+  sdfParams2: vec4(
+    'normalGatingHermiteKnee',
+    'normalGatingHermiteCap',
+  ),
   glass: vec4('thickness', 'displacementFactor', 'ior', 'dispersion'),
   content: vec4('ior', 'depth'),
   lighting: vec4('x', 'y'),
@@ -33,7 +34,8 @@ export const ShapeDataLayout = structLayout({
   inverse0: vec4('a', 'c', 'e', 'minimumScale'),
   inverse1: vec4('b', 'd', 'f', 'cornerRadius'),
   geometry: vec4('halfWidth', 'halfHeight', 'cornerSmoothing'),
-  contentRange: vec4('start', 'count', 'submergedArea'),
+  contentRange: vec4('start', 'count'),
+  submergedAreas: vec4('topLeft', 'topRight', 'bottomLeft', 'bottomRight'),
 })
 
 /** Storage layout for one glass-attached HTML content atlas entry. */

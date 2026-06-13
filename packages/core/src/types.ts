@@ -80,10 +80,3 @@ export interface Transform {
  * Surface profile used for the beveled glass edge.
  */
 export type SurfaceProfile = 'convex' | 'concave' | 'lip'
-
-/**
- * Normal-divergence metric used to scale SDF smooth-union blending.
- */
-export type NormalDivergenceBlendMode =
-  | 'half-chord'
-  | 'angle'

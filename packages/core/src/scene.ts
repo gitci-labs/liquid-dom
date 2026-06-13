@@ -5,8 +5,13 @@ import {
   sanitizeCornerSmoothing,
 } from './corner-smoothing'
 import { composeTransform, identityMatrix, multiplyMatrices, type Matrix2D } from './matrix'
+import {
+  DEFAULT_NORMAL_GATING,
+  resolveNormalGating,
+  type NormalGating,
+  type ResolvedNormalGating,
+} from './sdf'
 import type {
-  NormalDivergenceBlendMode,
   Point,
   RgbaColor,
   SpecularWidth,
@@ -59,12 +64,8 @@ export type ContainerInit = Partial<Transform> & {
   thickness?: number
   displacementFactor?: number
   displacementBlur?: number
-  normalDivergenceBlendMode?: NormalDivergenceBlendMode
-  normalDivergenceBlendEnabled?: boolean
-  exposureBlendSubmergedAreaModulationEnabled?: boolean
-  exposureBlendSubmergedAreaMinStrength?: number
-  exposureBlendSubmergedAreaPeriod?: number
-  exposureBlendSubmergedAreaDelay?: number
+  normalGating?: NormalGating
+  submersionGating?: boolean
   ior?: number
   contentIor?: number
   contentDepth?: number
@@ -667,18 +668,17 @@ export class Container implements Transform {
   displacementFactor = 1
   /** Blur radius applied to the precomputed displacement field in CSS pixels. */
   displacementBlur = 6
-  /** Metric used to scale smooth-union blending by normal divergence. */
-  normalDivergenceBlendMode: NormalDivergenceBlendMode = 'half-chord'
-  /** Enables normal-based suppression of SDF smooth-union blending. */
-  normalDivergenceBlendEnabled = true
+  private _normalGating: ResolvedNormalGating = { ...DEFAULT_NORMAL_GATING }
+  /** Normal-based suppression of SDF smooth-union blending. */
+  get normalGating(): ResolvedNormalGating {
+    return this._normalGating
+  }
+
+  set normalGating(value: NormalGating) {
+    this._normalGating = resolveNormalGating(value)
+  }
   /** Enables shape-area-based modulation of the SDF smooth-union radius. */
-  exposureBlendSubmergedAreaModulationEnabled = true
-  /** Smooth-union radius multiplier at the strongest submerged-area attenuation. */
-  exposureBlendSubmergedAreaMinStrength = 0.1
-  /** Period of the blend-influence attenuation curve in normalized area units. */
-  exposureBlendSubmergedAreaPeriod = 0.5
-  /** Normalized area delay before blend-influence attenuation starts. */
-  exposureBlendSubmergedAreaDelay = 0
+  submersionGating = true
   /** Refractive index used for the displacement model. */
   ior = 1.5
   /** Refractive index used when refracting DOM content rendered inside the glass. */
@@ -755,23 +755,11 @@ export class Container implements Transform {
     if (options.displacementBlur !== undefined) {
       this.displacementBlur = options.displacementBlur
     }
-    if (options.normalDivergenceBlendMode !== undefined) {
-      this.normalDivergenceBlendMode = options.normalDivergenceBlendMode
+    if (options.normalGating !== undefined) {
+      this.normalGating = options.normalGating
     }
-    if (options.normalDivergenceBlendEnabled !== undefined) {
-      this.normalDivergenceBlendEnabled = options.normalDivergenceBlendEnabled
-    }
-    if (options.exposureBlendSubmergedAreaModulationEnabled !== undefined) {
-      this.exposureBlendSubmergedAreaModulationEnabled = options.exposureBlendSubmergedAreaModulationEnabled
-    }
-    if (options.exposureBlendSubmergedAreaMinStrength !== undefined) {
-      this.exposureBlendSubmergedAreaMinStrength = options.exposureBlendSubmergedAreaMinStrength
-    }
-    if (options.exposureBlendSubmergedAreaPeriod !== undefined) {
-      this.exposureBlendSubmergedAreaPeriod = options.exposureBlendSubmergedAreaPeriod
-    }
-    if (options.exposureBlendSubmergedAreaDelay !== undefined) {
-      this.exposureBlendSubmergedAreaDelay = options.exposureBlendSubmergedAreaDelay
+    if (options.submersionGating !== undefined) {
+      this.submersionGating = options.submersionGating
     }
     if (options.ior !== undefined) {
       this.ior = options.ior

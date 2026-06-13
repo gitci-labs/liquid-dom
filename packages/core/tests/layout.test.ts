@@ -188,61 +188,66 @@ describe('layout UI tree', () => {
     expect(events).toEqual(['layout', 'frame'])
   })
 
-  it('stores normal-divergence blend mode on scene containers', () => {
+  it('stores normal and submersion gating on scene containers', () => {
     const defaultContainer = new SceneContainer()
-    expect(defaultContainer.normalDivergenceBlendMode).toBe('half-chord')
-    expect(defaultContainer.exposureBlendSubmergedAreaModulationEnabled).toBe(true)
-    expect(defaultContainer.exposureBlendSubmergedAreaMinStrength).toBe(0.1)
-    expect(defaultContainer.exposureBlendSubmergedAreaPeriod).toBe(0.5)
-    expect(defaultContainer.exposureBlendSubmergedAreaDelay).toBe(0)
+    expect(defaultContainer.normalGating).toEqual({
+      enabled: true,
+      hermiteCap: 0.84,
+      hermiteKnee: 0.7,
+    })
+    expect(defaultContainer.submersionGating).toBe(true)
 
     const container = new SceneContainer({
-      normalDivergenceBlendMode: 'angle',
-      exposureBlendSubmergedAreaModulationEnabled: false,
-      exposureBlendSubmergedAreaMinStrength: 0.2,
-      exposureBlendSubmergedAreaPeriod: 0.5,
-      exposureBlendSubmergedAreaDelay: 0.1,
+      normalGating: {
+        hermiteKnee: 0.72,
+        hermiteCap: 0.86,
+      },
+      submersionGating: false,
     })
-    expect(container.normalDivergenceBlendMode).toBe('angle')
-    expect(container.exposureBlendSubmergedAreaModulationEnabled).toBe(false)
-    expect(container.exposureBlendSubmergedAreaMinStrength).toBe(0.2)
-    expect(container.exposureBlendSubmergedAreaPeriod).toBe(0.5)
-    expect(container.exposureBlendSubmergedAreaDelay).toBe(0.1)
+    expect(container.normalGating).toEqual({
+      enabled: true,
+      hermiteCap: 0.86,
+      hermiteKnee: 0.72,
+    })
+    expect(container.submersionGating).toBe(false)
 
-    container.normalDivergenceBlendMode = 'half-chord'
-    container.exposureBlendSubmergedAreaModulationEnabled = true
-    container.exposureBlendSubmergedAreaMinStrength = 0.1
-    container.exposureBlendSubmergedAreaPeriod = 0.4
-    container.exposureBlendSubmergedAreaDelay = 0.2
-    expect(container.normalDivergenceBlendMode).toBe('half-chord')
-    expect(container.exposureBlendSubmergedAreaModulationEnabled).toBe(true)
-    expect(container.exposureBlendSubmergedAreaMinStrength).toBe(0.1)
-    expect(container.exposureBlendSubmergedAreaPeriod).toBe(0.4)
-    expect(container.exposureBlendSubmergedAreaDelay).toBe(0.2)
+    container.normalGating = false
+    container.submersionGating = true
+    expect(container.normalGating).toEqual({
+      enabled: false,
+      hermiteCap: 0.84,
+      hermiteKnee: 0.7,
+    })
+    expect(container.submersionGating).toBe(true)
   })
 
-  it('propagates normal-divergence blend mode changes and invalidates frames', () => {
+  it('propagates gating changes and invalidates frames', () => {
     const scene = new LayoutScene()
     const container = scene.add(new GlassContainer({
-      normalDivergenceBlendMode: 'half-chord',
+      normalGating: {
+        hermiteKnee: 0.72,
+      },
     }))
     const events: string[] = []
     scene.addInvalidationListener((event) => events.push(event.kind))
 
-    container.normalDivergenceBlendMode = 'angle'
-    container.normalDivergenceBlendEnabled = false
-    container.exposureBlendSubmergedAreaModulationEnabled = false
-    container.exposureBlendSubmergedAreaMinStrength = 0.25
-    container.exposureBlendSubmergedAreaPeriod = 0.6
-    container.exposureBlendSubmergedAreaDelay = 0.1
+    container.normalGating = {
+      enabled: false,
+      hermiteKnee: 0.76,
+      hermiteCap: 0.82,
+    }
+    container.submersionGating = false
 
-    expect(container.sceneNode.normalDivergenceBlendMode).toBe('angle')
-    expect(container.sceneNode.normalDivergenceBlendEnabled).toBe(false)
-    expect(container.sceneNode.exposureBlendSubmergedAreaModulationEnabled).toBe(false)
-    expect(container.sceneNode.exposureBlendSubmergedAreaMinStrength).toBe(0.25)
-    expect(container.sceneNode.exposureBlendSubmergedAreaPeriod).toBe(0.6)
-    expect(container.sceneNode.exposureBlendSubmergedAreaDelay).toBe(0.1)
-    expect(events).toEqual(['frame', 'frame', 'frame', 'frame', 'frame', 'frame'])
+    expect(container.sceneNode.normalGating).toEqual({
+      enabled: false,
+      hermiteCap: 0.82,
+      hermiteKnee: 0.76,
+    })
+    expect(container.sceneNode.submersionGating).toBe(false)
+    expect(events).toEqual([
+      'frame',
+      'frame',
+    ])
   })
 
   it('stores uniform glass corner radius and smoothing on scene nodes', () => {
