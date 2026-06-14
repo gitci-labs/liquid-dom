@@ -49,6 +49,7 @@ import {
   GlobalsLayout,
   HtmlCompositeParamsLayout,
   ShapeDataLayout,
+  SubmersionCellDataLayout,
 } from './shader-layouts'
 import {
   getSortedGlassLayers,
@@ -56,11 +57,13 @@ import {
 } from './scene-order'
 import { Container, Html, Scene, type TraversedSceneLayer } from '../scene'
 import {
-  createEmptySubmergedAreas,
-  estimateSubmergedAreaPercentagesFromBounds,
+  estimateShapeGridSubmersions,
   polygonArea,
   resolveNormalGating,
+  type BlendSupportSampling,
+  type BlendSupportSubmersionCurve,
   type ShapeSubmergedAreasOf,
+  type ShapeSubmersionGrid,
   type ShapeSubmersionEntry,
   type TransformedShapeBounds,
 } from '../sdf'
@@ -81,6 +84,14 @@ import type {
 /** Resolves public specular-width semantics into the shader's device-pixel space. */
 export function resolveSpecularWidthPx(specularWidth: SpecularWidth, dpr: number) {
   return specularWidth === 'hairline' ? 1 : specularWidth * dpr
+}
+
+function getBlendSupportSubmersionCurveIndex(curve: BlendSupportSubmersionCurve) {
+  return curve === 'linear' ? 0 : 1
+}
+
+function getBlendSupportSamplingIndex(sampling: BlendSupportSampling) {
+  return sampling === 'bilinear' ? 0 : 1
 }
 
 /** Constructor options for the reusable WebGPU glass core. */
@@ -117,14 +128,20 @@ type PackedShapeCpuData = ShapeSubmersionEntry & {
   halfWidth: number
   inverse: Matrix2D
   minimumScale: number
+  submersionCellOffset: number
+  submersionGrid: ShapeSubmersionGrid
 }
 
 type GlobalsBuffer = GpuStructBuffer<GpuStructDefinition<typeof GlobalsLayout>>
 type ShapeDataBuffer = GpuStructArrayBuffer<GpuStructDefinition<typeof ShapeDataLayout>>
+type SubmersionCellDataBuffer = GpuStructArrayBuffer<GpuStructDefinition<typeof SubmersionCellDataLayout>>
 type BackdropMetricsBoundsBuffer = GpuStructBuffer<GpuStructDefinition<typeof BackdropMetricsBoundsLayout>>
 type HtmlCompositeParamsBuffer = GpuStructBuffer<GpuStructDefinition<typeof HtmlCompositeParamsLayout>>
 const DISPLACEMENT_FIELD_FORMAT = 'rgba16float' satisfies GPUTextureFormat
 const SHADOW_MASK_FORMAT = 'rgba8unorm' satisfies GPUTextureFormat
+const MIN_BLEND_SUPPORT_GRID_CELLS = 1
+const MAX_BLEND_SUPPORT_GRID_CELLS = 12
+const MIN_BLEND_SUPPORT_CELL_SIZE = 1
 
 /** Maps a public surface profile string to the shader enum value. */
 function getSurfaceProfileIndex(profile: SurfaceProfile) {
@@ -171,6 +188,48 @@ function shapeCellBoundsFromMatrix(world: Matrix2D, width: number, height: numbe
   }
 }
 
+function gridAxisCellCount(length: number, cellSize: number) {
+  return Math.min(
+    Math.max(Math.ceil(length / Math.max(cellSize, MIN_BLEND_SUPPORT_CELL_SIZE)), MIN_BLEND_SUPPORT_GRID_CELLS),
+    MAX_BLEND_SUPPORT_GRID_CELLS,
+  )
+}
+
+function shapeSubmersionGridFromMatrix(
+  world: Matrix2D,
+  width: number,
+  height: number,
+  cellSize: number,
+): ShapeSubmersionGrid {
+  const columns = gridAxisCellCount(width, cellSize)
+  const rows = gridAxisCellCount(height, cellSize)
+  const cellWidth = width / columns
+  const cellHeight = height / rows
+  const cells: ShapeSubmersionGrid['cells'] = []
+  const cellBounds = (minX: number, minY: number, maxX: number, maxY: number) => shapeBoundsFromCorners([
+    transformPoint(world, minX, minY),
+    transformPoint(world, maxX, minY),
+    transformPoint(world, maxX, maxY),
+    transformPoint(world, minX, maxY),
+  ])
+
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      const minX = column * cellWidth
+      const minY = row * cellHeight
+      cells.push({
+        bounds: cellBounds(minX, minY, minX + cellWidth, minY + cellHeight),
+      })
+    }
+  }
+
+  return {
+    cells,
+    columns,
+    rows,
+  }
+}
+
 /** Texture-in/texture-out WebGPU compositor for a liquid-glass scene graph. */
 export class WebGpuGlassCore {
   private readonly backdropMetrics = new BackdropMetricsTracker(() => this.destroyed)
@@ -185,6 +244,7 @@ export class WebGpuGlassCore {
   private readonly format: GPUTextureFormat
   private globalsBuffer: GlobalsBuffer
   private shapesBuffer: ShapeDataBuffer | null = null
+  private submersionCellsBuffer: SubmersionCellDataBuffer
   private backdropMetricsBoundsBuffer: BackdropMetricsBoundsBuffer
   private htmlCompositeParamsBuffer: HtmlCompositeParamsBuffer
   private emptyContentEntriesBuffer: GpuStructArrayBuffer<GpuStructDefinition<typeof ContentDataLayout>>
@@ -215,6 +275,12 @@ export class WebGpuGlassCore {
     const uniformBufferUsage = GPU_BUFFER_USAGE.UNIFORM | GPU_BUFFER_USAGE.COPY_DST
 
     this.globalsBuffer = new GpuStructBuffer(device, GlobalsLayout, uniformBufferUsage)
+    this.submersionCellsBuffer = new GpuStructArrayBuffer(
+      device,
+      SubmersionCellDataLayout,
+      GPU_BUFFER_USAGE.STORAGE | GPU_BUFFER_USAGE.COPY_DST,
+    )
+    this.submersionCellsBuffer.ensureCapacity(0)
     this.backdropMetricsBoundsBuffer = new GpuStructBuffer(device, BackdropMetricsBoundsLayout, uniformBufferUsage)
     this.htmlCompositeParamsBuffer = new GpuStructBuffer(device, HtmlCompositeParamsLayout, uniformBufferUsage)
     this.emptyContentEntriesBuffer = new GpuStructArrayBuffer(
@@ -393,6 +459,7 @@ export class WebGpuGlassCore {
     this.backdropMetricsTarget.destroy()
     this.globalsBuffer.destroy()
     this.shapesBuffer?.destroy()
+    this.submersionCellsBuffer.destroy()
     this.emptyContentEntriesBuffer.destroy()
     destroyAdaptiveBlurResources(this.backdropBlurResources)
     destroyAdaptiveBlurResources(this.displacementBlurResources)
@@ -435,6 +502,27 @@ export class WebGpuGlassCore {
     this.shapesBuffer.ensureCapacity(requiredCount)
   }
 
+  private uploadSubmersionCells(values: number[]) {
+    const packedCount = Math.ceil(values.length / 4)
+    this.submersionCellsBuffer.ensureCapacity(packedCount)
+    for (let index = 0; index < Math.max(packedCount, 1); index += 1) {
+      const baseIndex = index * 4
+      this.submersionCellsBuffer.writeAt(index, {
+        values: {
+          x: values[baseIndex] ?? 0,
+          y: values[baseIndex + 1] ?? 0,
+          z: values[baseIndex + 2] ?? 0,
+          w: values[baseIndex + 3] ?? 0,
+        },
+      })
+    }
+    this.submersionCellsBuffer.upload(packedCount)
+  }
+
+  private resolveBlendSupportCellSize(container: Container) {
+    return Math.max(container.blendSupportCellSize, MIN_BLEND_SUPPORT_CELL_SIZE)
+  }
+
   /** Writes per-container global shader parameters. */
   private writeGlobals(container: Container, shapeCount: number) {
     const dpr = this.currentDpr
@@ -460,10 +548,13 @@ export class WebGpuGlassCore {
       sdfParams0: {
         blendSupportGatingEnabled: container.blendSupportGating ? 1 : 0,
         smoothUnionAcceleration: clamp(container.smoothUnion.acceleration, 0, 1),
+        blendSupportKernelRadius: container.blendSupportKernelRadius,
+        blendSupportSubmersionCurve: getBlendSupportSubmersionCurveIndex(container.blendSupportSubmersionCurve),
       },
       sdfParams2: {
         normalGatingHermiteKnee: clamp(normalGating.hermiteKnee, 0, 1),
         normalGatingHermiteCap: clamp(normalGating.hermiteCap, 0, 1),
+        blendSupportSampling: getBlendSupportSamplingIndex(container.blendSupportSampling),
       },
       glass: {
         thickness: container.thickness * dpr,
@@ -531,6 +622,7 @@ export class WebGpuGlassCore {
     const dpr = this.currentDpr
     const glassLayers = getSortedGlassLayers(container)
     const bounds = createEmptyBounds()
+    const blendSupportCellSize = this.resolveBlendSupportCellSize(container)
     let activeCount = 0
 
     this.ensureShapesBuffer(glassLayers.length)
@@ -556,6 +648,12 @@ export class WebGpuGlassCore {
       const bottomRight = transformPoint(worldDevice, glass.width, glass.height)
       const shapeBounds = shapeBoundsFromCorners([topLeft, topRight, bottomRight, bottomLeft])
       const cellBounds = shapeCellBoundsFromMatrix(worldDevice, glass.width, glass.height)
+      const submersionGrid = shapeSubmersionGridFromMatrix(
+        worldDevice,
+        glass.width,
+        glass.height,
+        blendSupportCellSize,
+      )
       expandBounds(bounds, shapeBounds.aabb.minX, shapeBounds.aabb.minY)
       expandBounds(bounds, shapeBounds.aabb.maxX, shapeBounds.aabb.maxY)
 
@@ -572,14 +670,22 @@ export class WebGpuGlassCore {
         halfWidth,
         inverse,
         minimumScale: getMinimumScale(worldDevice),
+        submersionCellOffset: 0,
+        submersionGrid,
       })
 
       activeCount += 1
     }
 
-    const submergedAreas = container.blendSupportGating
-      ? estimateSubmergedAreaPercentagesFromBounds(packedShapes)
-      : packedShapes.map(() => createEmptySubmergedAreas())
+    const submersionCellValues: number[] = []
+    for (const shape of packedShapes) {
+      const gridValues = container.blendSupportGating
+        ? estimateShapeGridSubmersions(packedShapes, shape).values
+        : Array.from({ length: shape.submersionGrid.cells.length }, () => 0)
+      shape.submersionCellOffset = submersionCellValues.length
+      submersionCellValues.push(...gridValues)
+    }
+    this.uploadSubmersionCells(submersionCellValues)
 
     packedShapes.forEach((shape, index) => {
       shapesBuffer?.writeAt(index, {
@@ -604,11 +710,10 @@ export class WebGpuGlassCore {
           start: shape.contentRange?.start ?? 0,
           count: shape.contentRange?.count ?? 0,
         },
-        submergedAreas: {
-          topLeft: submergedAreas[index]?.topLeft ?? 0,
-          topRight: submergedAreas[index]?.topRight ?? 0,
-          bottomLeft: submergedAreas[index]?.bottomLeft ?? 0,
-          bottomRight: submergedAreas[index]?.bottomRight ?? 0,
+        submersionGrid: {
+          offset: shape.submersionCellOffset,
+          columns: shape.submersionGrid.columns,
+          rows: shape.submersionGrid.rows,
         },
       })
     })
@@ -631,6 +736,7 @@ export class WebGpuGlassCore {
     const fieldBindGroup = createPipelineBindGroup(this.device, this.displacementFieldPipeline, [
       { binding: 0, resource: this.globalsBuffer.bindingResource },
       { binding: 1, resource: this.shapesBuffer.bindingResource },
+      { binding: 2, resource: this.submersionCellsBuffer.bindingResource },
     ])
     drawFullscreenPass(encoder, {
       pipeline: this.displacementFieldPipeline,
@@ -670,6 +776,7 @@ export class WebGpuGlassCore {
     const maskBindGroup = createPipelineBindGroup(this.device, this.shadowMaskPipeline, [
       { binding: 0, resource: this.globalsBuffer.bindingResource },
       { binding: 1, resource: this.shapesBuffer.bindingResource },
+      { binding: 2, resource: this.submersionCellsBuffer.bindingResource },
     ])
     drawFullscreenPass(encoder, {
       pipeline: this.shadowMaskPipeline,
@@ -739,9 +846,10 @@ export class WebGpuGlassCore {
     const bindGroup = createPipelineBindGroup(this.device, this.backdropMetricsPipeline, [
       { binding: 0, resource: this.globalsBuffer.bindingResource },
       { binding: 1, resource: this.shapesBuffer.bindingResource },
-      { binding: 2, resource: this.sampler },
-      { binding: 3, resource: blurredBackdrop.createView() },
-      { binding: 4, resource: this.backdropMetricsBoundsBuffer.bindingResource },
+      { binding: 2, resource: this.submersionCellsBuffer.bindingResource },
+      { binding: 3, resource: this.sampler },
+      { binding: 4, resource: blurredBackdrop.createView() },
+      { binding: 5, resource: this.backdropMetricsBoundsBuffer.bindingResource },
     ])
     drawFullscreenPass(encoder, {
       pipeline: this.backdropMetricsPipeline,
@@ -789,12 +897,13 @@ export class WebGpuGlassCore {
     const bindGroup = createPipelineBindGroup(this.device, this.glassPipeline, [
       { binding: 0, resource: this.globalsBuffer.bindingResource },
       { binding: 1, resource: this.shapesBuffer.bindingResource },
-      { binding: 2, resource: this.sampler },
-      { binding: 3, resource: sharpSource.createView() },
-      { binding: 4, resource: blurredBackdrop.createView() },
-      { binding: 5, resource: contentTexture.createView() },
-      { binding: 6, resource: contentEntriesBindingResource },
-      { binding: 7, resource: displacementField.createView() },
+      { binding: 2, resource: this.submersionCellsBuffer.bindingResource },
+      { binding: 3, resource: this.sampler },
+      { binding: 4, resource: sharpSource.createView() },
+      { binding: 5, resource: blurredBackdrop.createView() },
+      { binding: 6, resource: contentTexture.createView() },
+      { binding: 7, resource: contentEntriesBindingResource },
+      { binding: 8, resource: displacementField.createView() },
     ])
     drawFullscreenPass(encoder, {
       pipeline: this.glassPipeline,

@@ -5,6 +5,7 @@ import {
   GlobalsLayout,
   HtmlCompositeParamsLayout,
   ShapeDataLayout,
+  SubmersionCellDataLayout,
 } from './renderer/shader-layouts'
 import {
   CIRCULAR_CORNER_EXPONENT,
@@ -146,6 +147,8 @@ ${GlobalsLayout.wgsl('Globals')}
 
 ${ShapeDataLayout.wgsl('ShapeData')}
 
+${SubmersionCellDataLayout.wgsl('SubmersionCellData')}
+
 struct VertexOutput {
   @builtin(position) position: vec4f,
   @location(0) uv: vec2f,
@@ -274,12 +277,72 @@ fn shapeGradient(shape: ShapeData, pos: vec2f) -> vec2f {
   ));
 }
 
+fn submersionGridValue(shape: ShapeData, x: i32, y: i32, columns: u32, rows: u32) -> f32 {
+  let clampedX = u32(clamp(x, 0, i32(columns) - 1));
+  let clampedY = u32(clamp(y, 0, i32(rows) - 1));
+  let cellIndex = u32(round(shape.submersionGrid.x)) + clampedY * columns + clampedX;
+  let packedValues = submersionCells[cellIndex / 4u].values;
+  return packedValues[cellIndex % 4u];
+}
+
+fn submersionGridCutoffWeight(offset: f32, kernelRadius: i32) -> f32 {
+  let radius = f32(kernelRadius) + 0.5;
+  let t = clamp((radius - abs(offset)) * 2.0, 0.0, 1.0);
+  return t * t * (3.0 - 2.0 * t);
+}
+
+fn submersionGridGaussianWeight(offset: vec2f, kernelRadius: i32) -> f32 {
+  return exp(-0.5 * dot(offset, offset)) *
+    submersionGridCutoffWeight(offset.x, kernelRadius) *
+    submersionGridCutoffWeight(offset.y, kernelRadius);
+}
+
 fn shapeSubmergedArea(shape: ShapeData, localPos: vec2f) -> f32 {
   let size = max(shape.geometry.xy * 2.0, vec2f(SDF_EPSILON));
   let uv = clamp(localPos / size, vec2f(0.0), vec2f(1.0));
-  let top = mix(shape.submergedAreas.x, shape.submergedAreas.y, uv.x);
-  let bottom = mix(shape.submergedAreas.z, shape.submergedAreas.w, uv.x);
-  return mix(top, bottom, uv.y);
+  let columns = max(u32(round(shape.submersionGrid.y)), 1u);
+  let rows = max(u32(round(shape.submersionGrid.z)), 1u);
+  let gridCoord = uv * vec2f(f32(columns), f32(rows)) - vec2f(0.5);
+
+  if (globals.sdfParams2.z < 0.5) {
+    let base = vec2i(floor(gridCoord));
+    let fraction = gridCoord - vec2f(base);
+    let top = mix(
+      submersionGridValue(shape, base.x, base.y, columns, rows),
+      submersionGridValue(shape, base.x + 1, base.y, columns, rows),
+      fraction.x,
+    );
+    let bottom = mix(
+      submersionGridValue(shape, base.x, base.y + 1, columns, rows),
+      submersionGridValue(shape, base.x + 1, base.y + 1, columns, rows),
+      fraction.x,
+    );
+    return mix(top, bottom, fraction.y);
+  }
+
+  let center = vec2i(floor(gridCoord + vec2f(0.5)));
+  let kernelRadius = i32(clamp(round(globals.sdfParams0.z), 1.0, 2.0));
+  var weightedSum = 0.0;
+  var weightSum = 0.0;
+
+  for (var offsetY = -2; offsetY <= 2; offsetY += 1) {
+    for (var offsetX = -2; offsetX <= 2; offsetX += 1) {
+      if (abs(offsetX) > kernelRadius || abs(offsetY) > kernelRadius) {
+        continue;
+      }
+      let cell = center + vec2i(offsetX, offsetY);
+      let offset = vec2f(cell) - gridCoord;
+      let weight = submersionGridGaussianWeight(offset, kernelRadius);
+      weightedSum += submersionGridValue(shape, cell.x, cell.y, columns, rows) * weight;
+      weightSum += weight;
+    }
+  }
+
+  if (weightSum <= SDF_EPSILON) {
+    return submersionGridValue(shape, center.x, center.y, columns, rows);
+  }
+
+  return weightedSum / weightSum;
 }
 
 fn shapeSdfSample(shape: ShapeData, pos: vec2f) -> SdfSample {
@@ -355,12 +418,22 @@ fn smoothUnionResult(leftDistance: f32, rightDistance: f32, blendDistance: f32) 
   return conservativeSmoothUnionResult(leftDistance, rightDistance, blendDistance);
 }
 
+fn smoothstep01(value: f32) -> f32 {
+  let x = clamp(value, 0.0, 1.0);
+  return x * x * (3.0 - 2.0 * x);
+}
+
 fn submergedAreaKScale(submergedArea: f32) -> f32 {
   if (globals.sdfParams0.x <= 0.5) {
     return 1.0;
   }
 
-  return 1.0 - clamp(submergedArea, 0.0, 1.0);
+  let area = clamp(submergedArea, 0.0, 1.0);
+  if (globals.sdfParams0.w < 0.5) {
+    return 1.0 - area;
+  }
+
+  return 1.0 - smoothstep01(area);
 }
 
 fn smoothUnion(
@@ -475,6 +548,7 @@ ${SHADER_SHARED}
 
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(0) @binding(1) var<storage, read> shapes: array<ShapeData>;
+@group(0) @binding(2) var<storage, read> submersionCells: array<SubmersionCellData>;
 
 @fragment
 fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
@@ -507,6 +581,7 @@ ${SHADER_SHARED}
 
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(0) @binding(1) var<storage, read> shapes: array<ShapeData>;
+@group(0) @binding(2) var<storage, read> submersionCells: array<SubmersionCellData>;
 
 @fragment
 fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {
@@ -552,15 +627,16 @@ ${SHADER_SHARED}
 
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(0) @binding(1) var<storage, read> shapes: array<ShapeData>;
-@group(0) @binding(2) var backgroundSampler: sampler;
-@group(0) @binding(3) var backgroundTextureSharp: texture_2d<f32>;
-@group(0) @binding(4) var backgroundTextureBlurred: texture_2d<f32>;
-@group(0) @binding(5) var glassContentTexture: texture_2d<f32>;
+@group(0) @binding(2) var<storage, read> submersionCells: array<SubmersionCellData>;
+@group(0) @binding(3) var backgroundSampler: sampler;
+@group(0) @binding(4) var backgroundTextureSharp: texture_2d<f32>;
+@group(0) @binding(5) var backgroundTextureBlurred: texture_2d<f32>;
+@group(0) @binding(6) var glassContentTexture: texture_2d<f32>;
 
 ${ContentDataLayout.wgsl('ContentData')}
 
-@group(0) @binding(6) var<storage, read> contentEntries: array<ContentData>;
-@group(0) @binding(7) var displacementFieldTexture: texture_2d<f32>;
+@group(0) @binding(7) var<storage, read> contentEntries: array<ContentData>;
+@group(0) @binding(8) var displacementFieldTexture: texture_2d<f32>;
 
 fn sampleBackgroundSharp(uv: vec2f) -> vec3f {
   return textureSampleLevel(backgroundTextureSharp, backgroundSampler, uv, 0.0).rgb;
@@ -827,9 +903,10 @@ ${BackdropMetricsBoundsLayout.wgsl('MetricsBounds')}
 
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(0) @binding(1) var<storage, read> shapes: array<ShapeData>;
-@group(0) @binding(2) var metricsSampler: sampler;
-@group(0) @binding(3) var blurredBackdrop: texture_2d<f32>;
-@group(0) @binding(4) var<uniform> metricsBounds: MetricsBounds;
+@group(0) @binding(2) var<storage, read> submersionCells: array<SubmersionCellData>;
+@group(0) @binding(3) var metricsSampler: sampler;
+@group(0) @binding(4) var blurredBackdrop: texture_2d<f32>;
+@group(0) @binding(5) var<uniform> metricsBounds: MetricsBounds;
 
 @fragment
 fn fragmentMain(in: VertexOutput) -> @location(0) vec4f {

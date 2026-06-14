@@ -14,10 +14,13 @@ export const GlobalsLayout = structLayout({
   sdfParams0: vec4(
     'blendSupportGatingEnabled',
     'smoothUnionAcceleration',
+    'blendSupportKernelRadius',
+    'blendSupportSubmersionCurve',
   ),
   sdfParams2: vec4(
     'normalGatingHermiteKnee',
     'normalGatingHermiteCap',
+    'blendSupportSampling',
   ),
   glass: vec4('thickness', 'displacementFactor', 'ior', 'dispersion'),
   content: vec4('ior', 'depth'),
@@ -36,7 +39,12 @@ export const ShapeDataLayout = structLayout({
   inverse1: vec4('b', 'd', 'f', 'cornerRadius'),
   geometry: vec4('halfWidth', 'halfHeight', 'cornerSmoothing'),
   contentRange: vec4('start', 'count'),
-  submergedAreas: vec4('topLeft', 'topRight', 'bottomLeft', 'bottomRight'),
+  submersionGrid: vec4('offset', 'columns', 'rows'),
+})
+
+/** Packed blend-support submersion values. Each entry stores four grid cells. */
+export const SubmersionCellDataLayout = structLayout({
+  values: vec4('x', 'y', 'z', 'w'),
 })
 
 /** Storage layout for one glass-attached HTML content atlas entry. */

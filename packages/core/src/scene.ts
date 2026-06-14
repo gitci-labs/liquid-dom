@@ -6,10 +6,19 @@ import {
 } from './corner-smoothing'
 import { composeTransform, identityMatrix, multiplyMatrices, type Matrix2D } from './matrix'
 import {
+  DEFAULT_BLEND_SUPPORT_KERNEL_RADIUS,
+  DEFAULT_BLEND_SUPPORT_SAMPLING,
+  DEFAULT_BLEND_SUPPORT_SUBMERSION_CURVE,
   DEFAULT_NORMAL_GATING,
   DEFAULT_SMOOTH_UNION,
+  resolveBlendSupportKernelRadius,
+  resolveBlendSupportSampling,
+  resolveBlendSupportSubmersionCurve,
   resolveNormalGating,
   resolveSmoothUnionOptions,
+  type BlendSupportKernelRadius,
+  type BlendSupportSampling,
+  type BlendSupportSubmersionCurve,
   type NormalGating,
   type ResolvedNormalGating,
   type ResolvedSmoothUnionOptions,
@@ -22,6 +31,8 @@ import type {
   SurfaceProfile,
   Transform,
 } from './types'
+
+export const DEFAULT_BLEND_SUPPORT_CELL_SIZE = 100
 
 /**
  * Constructor options for a {@link Html} node.
@@ -70,6 +81,10 @@ export type ContainerInit = Partial<Transform> & {
   displacementBlur?: number
   normalGating?: NormalGating
   blendSupportGating?: boolean
+  blendSupportCellSize?: number
+  blendSupportKernelRadius?: BlendSupportKernelRadius
+  blendSupportSampling?: BlendSupportSampling
+  blendSupportSubmersionCurve?: BlendSupportSubmersionCurve
   smoothUnion?: SmoothUnionOptions
   ior?: number
   contentIor?: number
@@ -684,6 +699,14 @@ export class Container implements Transform {
   }
   /** Enables shape-area-based modulation of the SDF smooth-union radius. */
   blendSupportGating = true
+  /** Blend-support grid cell size in CSS pixels. */
+  blendSupportCellSize = DEFAULT_BLEND_SUPPORT_CELL_SIZE
+  /** Radius of the Gaussian support lookup kernel in grid cells. `1` is 3x3, `2` is 5x5. */
+  blendSupportKernelRadius: BlendSupportKernelRadius = DEFAULT_BLEND_SUPPORT_KERNEL_RADIUS
+  /** Interpolation strategy used when reading the blend-support submersion grid. */
+  blendSupportSampling: BlendSupportSampling = DEFAULT_BLEND_SUPPORT_SAMPLING
+  /** Curve used to convert submerged area into smooth-union attenuation. */
+  blendSupportSubmersionCurve: BlendSupportSubmersionCurve = DEFAULT_BLEND_SUPPORT_SUBMERSION_CURVE
   private _smoothUnion: ResolvedSmoothUnionOptions = { ...DEFAULT_SMOOTH_UNION }
   /** Smooth-min correction profile parameters used when fusing neighboring shapes. */
   get smoothUnion(): ResolvedSmoothUnionOptions {
@@ -774,6 +797,18 @@ export class Container implements Transform {
     }
     if (options.blendSupportGating !== undefined) {
       this.blendSupportGating = options.blendSupportGating
+    }
+    if (options.blendSupportCellSize !== undefined) {
+      this.blendSupportCellSize = options.blendSupportCellSize
+    }
+    if (options.blendSupportKernelRadius !== undefined) {
+      this.blendSupportKernelRadius = resolveBlendSupportKernelRadius(options.blendSupportKernelRadius)
+    }
+    if (options.blendSupportSampling !== undefined) {
+      this.blendSupportSampling = resolveBlendSupportSampling(options.blendSupportSampling)
+    }
+    if (options.blendSupportSubmersionCurve !== undefined) {
+      this.blendSupportSubmersionCurve = resolveBlendSupportSubmersionCurve(options.blendSupportSubmersionCurve)
     }
     if (options.smoothUnion !== undefined) {
       this.smoothUnion = options.smoothUnion

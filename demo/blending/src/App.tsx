@@ -11,6 +11,9 @@ import {
   DEFAULT_SMOOTH_UNION,
   resolveNormalGating,
   sdfUtils,
+  type BlendSupportKernelRadius,
+  type BlendSupportSampling,
+  type BlendSupportSubmersionCurve,
 } from '@liquid-dom/core'
 import {
   Frame,
@@ -33,6 +36,26 @@ const CONTAINER_SPACING = 160
 const MIN_CONTAINER_SPACING = 0
 const MAX_CONTAINER_SPACING = 160
 const BLEND_SUPPORT_GATING_ENABLED = true
+const BLEND_SUPPORT_CELL_SIZE = 100
+const MIN_BLEND_SUPPORT_CELL_SIZE = 8
+const MAX_BLEND_SUPPORT_CELL_SIZE = 240
+const BLEND_SUPPORT_KERNEL_RADIUS: BlendSupportKernelRadius = 2
+const BLEND_SUPPORT_KERNEL_RADIUS_OPTIONS: Record<string, BlendSupportKernelRadius> = {
+  '3x3': 1,
+  '5x5': 2,
+}
+const BLEND_SUPPORT_SAMPLING: BlendSupportSampling = 'gaussian'
+const BLEND_SUPPORT_SAMPLING_OPTIONS: Record<string, BlendSupportSampling> = {
+  Gaussian: 'gaussian',
+  Bilinear: 'bilinear',
+}
+const BLEND_SUPPORT_SUBMERSION_CURVE: BlendSupportSubmersionCurve = 'smoothstep'
+const BLEND_SUPPORT_SUBMERSION_CURVE_OPTIONS: Record<string, BlendSupportSubmersionCurve> = {
+  Linear: 'linear',
+  Smoothstep: 'smoothstep',
+}
+const MIN_BLEND_SUPPORT_GRID_CELLS = 1
+const MAX_BLEND_SUPPORT_GRID_CELLS = 12
 const MIN_SMOOTH_UNION_PARAMETER = 0
 const MAX_SMOOTH_UNION_PARAMETER = 1
 const SMOOTH_UNION_PARAMETER_STEP = 0.01
@@ -78,6 +101,10 @@ type BlendingControls = {
   normalGatingHermiteCap: number
   normalGatingHermiteKnee: number
   blendSupportGatingEnabled: boolean
+  blendSupportCellSize: number
+  blendSupportKernelRadius: BlendSupportKernelRadius
+  blendSupportSampling: BlendSupportSampling
+  blendSupportSubmersionCurve: BlendSupportSubmersionCurve
   smoothUnionAcceleration: number
 }
 
@@ -187,6 +214,10 @@ export default function App() {
     normalGatingHermiteCap,
     normalGatingHermiteKnee,
     blendSupportGatingEnabled,
+    blendSupportCellSize,
+    blendSupportKernelRadius,
+    blendSupportSampling,
+    blendSupportSubmersionCurve,
     smoothUnionAcceleration,
   }, setControls] = useControls(() => ({
     blendingDistance: {
@@ -231,6 +262,28 @@ export default function App() {
     blendSupportGatingEnabled: {
       value: BLEND_SUPPORT_GATING_ENABLED,
       label: 'Enable blend support gating',
+    },
+    blendSupportCellSize: {
+      value: BLEND_SUPPORT_CELL_SIZE,
+      min: MIN_BLEND_SUPPORT_CELL_SIZE,
+      max: MAX_BLEND_SUPPORT_CELL_SIZE,
+      step: 1,
+      label: 'Blend support cell size',
+    },
+    blendSupportKernelRadius: {
+      value: BLEND_SUPPORT_KERNEL_RADIUS,
+      options: BLEND_SUPPORT_KERNEL_RADIUS_OPTIONS,
+      label: 'Blend support kernel',
+    },
+    blendSupportSampling: {
+      value: BLEND_SUPPORT_SAMPLING,
+      options: BLEND_SUPPORT_SAMPLING_OPTIONS,
+      label: 'Blend support sampling',
+    },
+    blendSupportSubmersionCurve: {
+      value: BLEND_SUPPORT_SUBMERSION_CURVE,
+      options: BLEND_SUPPORT_SUBMERSION_CURVE_OPTIONS,
+      label: 'Submersion interpolation',
     },
     smoothUnionAcceleration: {
       value: DEFAULT_SMOOTH_UNION.acceleration,
@@ -288,7 +341,11 @@ export default function App() {
   useEffect(() => {
     requestSceneRender()
   }, [
+    blendSupportCellSize,
     blendSupportGatingEnabled,
+    blendSupportKernelRadius,
+    blendSupportSampling,
+    blendSupportSubmersionCurve,
     blendingDistance,
     cornerRadius,
     normalGatingEnabled,
@@ -438,6 +495,10 @@ export default function App() {
                     hermiteKnee: normalGatingHermiteKnee,
                   }}
                   blendSupportGating={blendSupportGatingEnabled}
+                  blendSupportCellSize={blendSupportCellSize}
+                  blendSupportKernelRadius={blendSupportKernelRadius}
+                  blendSupportSampling={blendSupportSampling}
+                  blendSupportSubmersionCurve={blendSupportSubmersionCurve}
                   smoothUnion={{
                     acceleration: smoothUnionAcceleration,
                   }}
@@ -483,6 +544,10 @@ export default function App() {
               shapes={shapes}
               stageSize={stageSize}
               blendSupportGatingEnabled={blendSupportGatingEnabled}
+              blendSupportCellSize={blendSupportCellSize}
+              blendSupportKernelRadius={blendSupportKernelRadius}
+              blendSupportSampling={blendSupportSampling}
+              blendSupportSubmersionCurve={blendSupportSubmersionCurve}
             />
           )}
 
@@ -538,6 +603,10 @@ type GatingPlotProps = {
 
 type BoundsOverlayProps = {
   blendingDistance: number
+  blendSupportCellSize: number
+  blendSupportKernelRadius: BlendSupportKernelRadius
+  blendSupportSampling: BlendSupportSampling
+  blendSupportSubmersionCurve: BlendSupportSubmersionCurve
   cornerRadius: number
   hermiteCap: number
   hermiteKnee: number
@@ -551,6 +620,10 @@ type BoundsOverlayProps = {
 
 function BoundsOverlay({
   blendingDistance,
+  blendSupportCellSize,
+  blendSupportKernelRadius,
+  blendSupportSampling,
+  blendSupportSubmersionCurve,
   cornerRadius,
   hermiteCap,
   hermiteKnee,
@@ -592,9 +665,10 @@ function BoundsOverlay({
     const shapeBounds: ShapeBoundsEntry[] = shapes.map((shape) => ({
       bounds: shapeBoundsFromState(shape),
       cellBounds: shapeCellBoundsFromState(shape),
+      submersionGrid: shapeSubmersionGridFromState(shape, blendSupportCellSize),
       shape,
     }))
-    const submergedAreasByShape = new Map<ShapeId, sdfUtils.ShapeSubmergedAreas>()
+    const submersionGridsByShape = new Map<ShapeId, sdfUtils.ShapeSubmersionGridValues>()
 
     for (const { bounds } of shapeBounds) {
       for (const other of shapeBounds) {
@@ -617,15 +691,21 @@ function BoundsOverlay({
     }
 
     for (const entry of shapeBounds) {
-      const { bounds, cellBounds, shape } = entry
-      const cellSubmersions = sdfUtils.estimateShapeCellSubmersions(shapeBounds, entry)
-      submergedAreasByShape.set(shape.id, cellSubmersions)
-      const cellEntries = [
-        { bounds: cellBounds.topLeft, localX: shape.width * 0.25, localY: shape.height * 0.25, value: cellSubmersions.topLeft },
-        { bounds: cellBounds.topRight, localX: shape.width * 0.75, localY: shape.height * 0.25, value: cellSubmersions.topRight },
-        { bounds: cellBounds.bottomLeft, localX: shape.width * 0.25, localY: shape.height * 0.75, value: cellSubmersions.bottomLeft },
-        { bounds: cellBounds.bottomRight, localX: shape.width * 0.75, localY: shape.height * 0.75, value: cellSubmersions.bottomRight },
-      ]
+      const { bounds, shape, submersionGrid } = entry
+      const cellSubmersions = sdfUtils.estimateShapeGridSubmersions(shapeBounds, entry)
+      submersionGridsByShape.set(shape.id, cellSubmersions)
+      const cellWidth = shape.width / submersionGrid.columns
+      const cellHeight = shape.height / submersionGrid.rows
+      const cellEntries = submersionGrid.cells.map((cell: sdfUtils.ShapeSubmersionCell, index: number) => {
+        const column = index % submersionGrid.columns
+        const row = Math.floor(index / submersionGrid.columns)
+        return {
+          bounds: cell.bounds,
+          localX: (column + 0.5) * cellWidth,
+          localY: (row + 0.5) * cellHeight,
+          value: cellSubmersions.values[index] ?? 0,
+        }
+      })
 
       for (const cell of cellEntries) {
         drawPolygon(context, cell.bounds.polygon, {
@@ -664,11 +744,14 @@ function BoundsOverlay({
     if (hoverPoint) {
       drawNormalGateVisualization(context, hoverPoint, shapes, stageSize, {
         blendingDistance,
+        blendSupportKernelRadius,
+        blendSupportSampling,
+        blendSupportSubmersionCurve,
         cornerRadius,
         enabled: normalGatingEnabled,
         hermiteCap,
         hermiteKnee,
-        submergedAreasByShape,
+        submersionGridsByShape,
         blendSupportGatingEnabled,
       })
     }
@@ -676,6 +759,10 @@ function BoundsOverlay({
     context.restore()
   }, [
     blendingDistance,
+    blendSupportCellSize,
+    blendSupportKernelRadius,
+    blendSupportSampling,
+    blendSupportSubmersionCurve,
     cornerRadius,
     hermiteCap,
     hermiteKnee,
@@ -770,6 +857,7 @@ function getDevicePixelRatio() {
 
 type ShapeBoundsEntry = sdfUtils.ShapeSubmersionEntry & {
   shape: ShapeState
+  submersionGrid: sdfUtils.ShapeSubmersionGrid
 }
 
 type ShapeCellBounds = {
@@ -819,6 +907,47 @@ function shapeCellBoundsFromState(shape: ShapeState): ShapeCellBounds {
   }
 }
 
+function blendSupportGridAxisCellCount(length: number, cellSize: number) {
+  return Math.min(
+    Math.max(Math.ceil(length / Math.max(cellSize, 1)), MIN_BLEND_SUPPORT_GRID_CELLS),
+    MAX_BLEND_SUPPORT_GRID_CELLS,
+  )
+}
+
+function shapeSubmersionGridFromState(shape: ShapeState, cellSize: number): sdfUtils.ShapeSubmersionGrid {
+  const columns = blendSupportGridAxisCellCount(shape.width, cellSize)
+  const rows = blendSupportGridAxisCellCount(shape.height, cellSize)
+  const cellWidth = shape.width / columns
+  const cellHeight = shape.height / rows
+  const cells: sdfUtils.ShapeSubmersionCell[] = []
+
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      const minX = column * cellWidth
+      const minY = row * cellHeight
+      const polygon = [
+        shapeLocalPointToStagePoint(shape, minX, minY),
+        shapeLocalPointToStagePoint(shape, minX + cellWidth, minY),
+        shapeLocalPointToStagePoint(shape, minX + cellWidth, minY + cellHeight),
+        shapeLocalPointToStagePoint(shape, minX, minY + cellHeight),
+      ]
+      cells.push({
+        bounds: {
+          aabb: sdfUtils.aabbFromPoints(polygon),
+          area: sdfUtils.polygonArea(polygon),
+          polygon,
+        },
+      })
+    }
+  }
+
+  return {
+    cells,
+    columns,
+    rows,
+  }
+}
+
 function drawPolygon(
   context: CanvasRenderingContext2D,
   polygon: StagePoint[],
@@ -853,11 +982,14 @@ function drawPolygon(
 
 type NormalGateVisualizationOptions = {
   blendingDistance: number
+  blendSupportKernelRadius: BlendSupportKernelRadius
+  blendSupportSampling: BlendSupportSampling
+  blendSupportSubmersionCurve: BlendSupportSubmersionCurve
   cornerRadius: number
   enabled: boolean
   hermiteCap: number
   hermiteKnee: number
-  submergedAreasByShape: Map<ShapeId, sdfUtils.ShapeSubmergedAreas>
+  submersionGridsByShape: Map<ShapeId, sdfUtils.ShapeSubmersionGridValues>
   blendSupportGatingEnabled: boolean
 }
 
@@ -868,13 +1000,15 @@ function drawNormalGateVisualization(
   stageSize: StageSize,
   options: NormalGateVisualizationOptions,
 ) {
-  const emptySubmergedAreas = sdfUtils.createEmptySubmergedAreas()
+  const emptySubmersionGrid = { columns: 1, rows: 1, values: [0] }
   const samples = shapes
     .map((shape) => shapeSdfSampleAtPoint(
       shape,
       point,
       options.cornerRadius,
-      options.submergedAreasByShape.get(shape.id) ?? emptySubmergedAreas,
+      options.submersionGridsByShape.get(shape.id) ?? emptySubmersionGrid,
+      options.blendSupportKernelRadius,
+      options.blendSupportSampling,
     ))
     .sort((left, right) => left.distance - right.distance)
 
@@ -901,7 +1035,9 @@ function shapeSdfSampleAtPoint(
   shape: ShapeState,
   point: StagePoint,
   cornerRadius: number,
-  submergedAreas: sdfUtils.ShapeSubmergedAreas,
+  submersionGrid: sdfUtils.ShapeSubmersionGridValues,
+  blendSupportKernelRadius: BlendSupportKernelRadius,
+  blendSupportSampling: BlendSupportSampling,
 ): ShapeSdfSample {
   const local = stagePointToShapeLocal(point, shape)
   const halfWidth = shape.width * 0.5
@@ -922,7 +1058,13 @@ function shapeSdfSampleAtPoint(
     distance,
     normal: normalizeVector(rotateLocalVector(localNormal.x, localNormal.y, shape.rotation)),
     shape,
-    submergedArea: sdfUtils.shapeSubmergedAreaAtCenteredLocal(local, shape, submergedAreas),
+    submergedArea: sdfUtils.shapeSubmergedAreaAtGridCenteredLocal(
+      local,
+      shape,
+      submersionGrid,
+      blendSupportKernelRadius,
+      blendSupportSampling,
+    ),
   }
 }
 
@@ -968,17 +1110,30 @@ function normalGateForSamples(
   right: ShapeSdfSample,
   options: NormalGateVisualizationOptions,
 ) {
-  return sdfUtils.smoothUnionGatingInfo(
-    left,
-    right,
-    options.blendingDistance,
+  const normalGate = sdfUtils.normalGateForNormals(
+    left.normal,
+    right.normal,
     resolveNormalGating({
       enabled: options.enabled,
       hermiteCap: options.hermiteCap,
       hermiteKnee: options.hermiteKnee,
     }),
-    options.blendSupportGatingEnabled,
   )
+  const baseBlendDistance = options.blendingDistance * normalGate.gate
+  const baseH = sdfUtils.smoothUnionWeight(left.distance, right.distance, baseBlendDistance)
+  const submergedArea = sdfUtils.lerp(right.submergedArea, left.submergedArea, baseH)
+  const clampedSubmergedArea = sdfUtils.clamp01(submergedArea)
+  const submergedAreaScale = options.blendSupportGatingEnabled
+    ? sdfUtils.blendSupportScaleForSubmersion(clampedSubmergedArea, options.blendSupportSubmersionCurve)
+    : 1
+
+  return {
+    angle: normalGate.angle,
+    blendDistance: baseBlendDistance * submergedAreaScale,
+    normalGate: normalGate.gate,
+    submergedArea: clampedSubmergedArea,
+    supportScale: submergedAreaScale,
+  }
 }
 
 function drawHoverMarker(context: CanvasRenderingContext2D, point: StagePoint) {
@@ -1052,6 +1207,7 @@ function drawNormalGateReadout(
     blendDistance: number
     normalGate: number
     submergedArea: number
+    supportScale: number
   },
   options: NormalGateVisualizationOptions,
 ) {
@@ -1064,7 +1220,7 @@ function drawNormalGateReadout(
     `angle ${Math.round((gateInfo.angle / Math.PI) * 180)} deg`,
     `normal gate ${Math.round(gateInfo.normalGate * 100)}%`,
     options.blendSupportGatingEnabled
-      ? `support ${Math.round((1 - gateInfo.submergedArea) * 100)}%`
+      ? `support ${Math.round(gateInfo.supportScale * 100)}%`
       : 'support off',
     `blend ${gateInfo.blendDistance.toFixed(0)} px`,
   ]
