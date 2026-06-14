@@ -24,20 +24,17 @@ export type ResolvedSmoothUnionOptions = {
   acceleration: number
 }
 
-export type BlendSupportKernelRadius = 1 | 2
-
-export type BlendSupportSubmersionCurve = 'linear' | 'smoothstep'
-
-export type BlendSupportSampling = 'gaussian' | 'bilinear'
-
-export type ShapeSubmergedAreasOf<T> = {
-  bottomLeft: T
-  bottomRight: T
-  topLeft: T
-  topRight: T
+export type BlendSupportGatingOptions = {
+  enabled?: boolean
+  cellSize?: number
 }
 
-export type ShapeSubmergedAreas = ShapeSubmergedAreasOf<number>
+export type BlendSupportGating = boolean | BlendSupportGatingOptions
+
+export type ResolvedBlendSupportGating = {
+  enabled: boolean
+  cellSize: number
+}
 
 export type ShapeSubmersionCell = {
   bounds: TransformedShapeBounds
@@ -70,7 +67,6 @@ export type TransformedShapeBounds = {
 
 export type ShapeSubmersionEntry = {
   bounds: TransformedShapeBounds
-  cellBounds: ShapeSubmergedAreasOf<TransformedShapeBounds>
   submersionGrid?: ShapeSubmersionGrid
 }
 
@@ -90,9 +86,12 @@ export const DEFAULT_SMOOTH_UNION: ResolvedSmoothUnionOptions = {
   acceleration: 0.35,
 }
 
-export const DEFAULT_BLEND_SUPPORT_KERNEL_RADIUS: BlendSupportKernelRadius = 2
-export const DEFAULT_BLEND_SUPPORT_SUBMERSION_CURVE: BlendSupportSubmersionCurve = 'smoothstep'
-export const DEFAULT_BLEND_SUPPORT_SAMPLING: BlendSupportSampling = 'gaussian'
+export const DEFAULT_BLEND_SUPPORT_GATING: ResolvedBlendSupportGating = {
+  enabled: true,
+  cellSize: 100,
+}
+
+const BLEND_SUPPORT_KERNEL_RADIUS = 2
 
 export function clamp01(value: number) {
   return Math.min(Math.max(value, 0), 1)
@@ -103,29 +102,13 @@ function smoothstep01(value: number) {
   return x * x * (3 - 2 * x)
 }
 
-export function resolveBlendSupportKernelRadius(radius: BlendSupportKernelRadius | undefined): BlendSupportKernelRadius {
-  return radius === 1 ? 1 : DEFAULT_BLEND_SUPPORT_KERNEL_RADIUS
-}
-
-export function resolveBlendSupportSubmersionCurve(
-  curve: BlendSupportSubmersionCurve | undefined,
-): BlendSupportSubmersionCurve {
-  return curve === 'linear' ? 'linear' : DEFAULT_BLEND_SUPPORT_SUBMERSION_CURVE
-}
-
-export function resolveBlendSupportSampling(sampling: BlendSupportSampling | undefined): BlendSupportSampling {
-  return sampling === 'bilinear' ? 'bilinear' : DEFAULT_BLEND_SUPPORT_SAMPLING
-}
-
-export function blendSupportScaleForSubmersion(
-  submergedArea: number,
-  curve: BlendSupportSubmersionCurve = DEFAULT_BLEND_SUPPORT_SUBMERSION_CURVE,
-) {
+export function blendSupportScaleForSubmersion(submergedArea: number) {
   const clampedArea = clamp01(submergedArea)
-  return 1 - (resolveBlendSupportSubmersionCurve(curve) === 'linear' ? clampedArea : smoothstep01(clampedArea))
+  return 1 - smoothstep01(clampedArea)
 }
 
-function submersionGridGaussianWeight(offsetX: number, offsetY: number, kernelRadius: BlendSupportKernelRadius) {
+function submersionGridGaussianWeight(offsetX: number, offsetY: number) {
+  const kernelRadius = BLEND_SUPPORT_KERNEL_RADIUS
   const cutoff = (offset: number) => smoothstep01((kernelRadius + 0.5 - Math.abs(offset)) * 2)
   return Math.exp(-0.5 * (offsetX * offsetX + offsetY * offsetY)) * cutoff(offsetX) * cutoff(offsetY)
 }
@@ -174,6 +157,31 @@ export function sameSmoothUnionOptions(
   return Object.is(left.acceleration, right.acceleration)
 }
 
+export function resolveBlendSupportGating(gating: BlendSupportGating | undefined): ResolvedBlendSupportGating {
+  if (gating === undefined) {
+    return { ...DEFAULT_BLEND_SUPPORT_GATING }
+  }
+
+  if (typeof gating === 'boolean') {
+    return {
+      ...DEFAULT_BLEND_SUPPORT_GATING,
+      enabled: gating,
+    }
+  }
+
+  return {
+    enabled: gating.enabled ?? true,
+    cellSize: gating.cellSize ?? DEFAULT_BLEND_SUPPORT_GATING.cellSize,
+  }
+}
+
+export function sameBlendSupportGating(
+  left: ResolvedBlendSupportGating,
+  right: ResolvedBlendSupportGating,
+) {
+  return left.enabled === right.enabled && Object.is(left.cellSize, right.cellSize)
+}
+
 export function hermiteCapGate(value: number, kneeInput: number, capInput: number) {
   const x = clamp01(value)
   const cap = clamp01(capInput)
@@ -217,38 +225,6 @@ export function smoothUnionWeight(leftDistance: number, rightDistance: number, b
   return clamp01(0.5 + 0.5 * (rightDistance - leftDistance) / Math.max(blendDistance, SDF_EPSILON))
 }
 
-export function createEmptySubmergedAreas(): ShapeSubmergedAreas {
-  return {
-    topLeft: 0,
-    topRight: 0,
-    bottomLeft: 0,
-    bottomRight: 0,
-  }
-}
-
-export function shapeSubmergedAreaAtLocal(
-  localPos: Point,
-  size: { height: number; width: number },
-  submergedAreas: ShapeSubmergedAreas,
-) {
-  const uvX = clamp01(localPos.x / Math.max(size.width, SDF_EPSILON))
-  const uvY = clamp01(localPos.y / Math.max(size.height, SDF_EPSILON))
-  const top = lerp(submergedAreas.topLeft, submergedAreas.topRight, uvX)
-  const bottom = lerp(submergedAreas.bottomLeft, submergedAreas.bottomRight, uvX)
-  return lerp(top, bottom, uvY)
-}
-
-export function shapeSubmergedAreaAtCenteredLocal(
-  centeredLocalPos: Point,
-  size: { height: number; width: number },
-  submergedAreas: ShapeSubmergedAreas,
-) {
-  return shapeSubmergedAreaAtLocal({
-    x: centeredLocalPos.x + size.width * 0.5,
-    y: centeredLocalPos.y + size.height * 0.5,
-  }, size, submergedAreas)
-}
-
 function sampleSubmersionGridValue(grid: ShapeSubmersionGridValues, x: number, y: number) {
   const columns = Math.max(Math.round(grid.columns), 1)
   const rows = Math.max(Math.round(grid.rows), 1)
@@ -261,36 +237,14 @@ export function shapeSubmergedAreaAtGridLocal(
   localPos: Point,
   size: { height: number; width: number },
   grid: ShapeSubmersionGridValues,
-  kernelRadiusInput: BlendSupportKernelRadius = DEFAULT_BLEND_SUPPORT_KERNEL_RADIUS,
-  samplingInput: BlendSupportSampling = DEFAULT_BLEND_SUPPORT_SAMPLING,
 ) {
-  const kernelRadius = resolveBlendSupportKernelRadius(kernelRadiusInput)
-  const sampling = resolveBlendSupportSampling(samplingInput)
+  const kernelRadius = BLEND_SUPPORT_KERNEL_RADIUS
   const columns = Math.max(Math.round(grid.columns), 1)
   const rows = Math.max(Math.round(grid.rows), 1)
   const uvX = clamp01(localPos.x / Math.max(size.width, SDF_EPSILON))
   const uvY = clamp01(localPos.y / Math.max(size.height, SDF_EPSILON))
   const gridX = uvX * columns - 0.5
   const gridY = uvY * rows - 0.5
-
-  if (sampling === 'bilinear') {
-    const baseX = Math.floor(gridX)
-    const baseY = Math.floor(gridY)
-    const fracX = gridX - baseX
-    const fracY = gridY - baseY
-    const top = lerp(
-      sampleSubmersionGridValue(grid, baseX, baseY),
-      sampleSubmersionGridValue(grid, baseX + 1, baseY),
-      fracX,
-    )
-    const bottom = lerp(
-      sampleSubmersionGridValue(grid, baseX, baseY + 1),
-      sampleSubmersionGridValue(grid, baseX + 1, baseY + 1),
-      fracX,
-    )
-    return lerp(top, bottom, fracY)
-  }
-
   const centerX = Math.floor(gridX + 0.5)
   const centerY = Math.floor(gridY + 0.5)
   let weightedSum = 0
@@ -303,7 +257,7 @@ export function shapeSubmergedAreaAtGridLocal(
       }
       const cellX = centerX + offsetX
       const cellY = centerY + offsetY
-      const weight = submersionGridGaussianWeight(cellX - gridX, cellY - gridY, kernelRadius)
+      const weight = submersionGridGaussianWeight(cellX - gridX, cellY - gridY)
       weightedSum += sampleSubmersionGridValue(grid, cellX, cellY) * weight
       weightSum += weight
     }
@@ -316,13 +270,11 @@ export function shapeSubmergedAreaAtGridCenteredLocal(
   centeredLocalPos: Point,
   size: { height: number; width: number },
   grid: ShapeSubmersionGridValues,
-  kernelRadius: BlendSupportKernelRadius = DEFAULT_BLEND_SUPPORT_KERNEL_RADIUS,
-  sampling: BlendSupportSampling = DEFAULT_BLEND_SUPPORT_SAMPLING,
 ) {
   return shapeSubmergedAreaAtGridLocal({
     x: centeredLocalPos.x + size.width * 0.5,
     y: centeredLocalPos.y + size.height * 0.5,
-  }, size, grid, kernelRadius, sampling)
+  }, size, grid)
 }
 
 export function aabbFromPoints(points: Point[]): BoundsRect {
@@ -486,18 +438,6 @@ export function estimateCellSubmersion<T extends ShapeSubmersionEntry>(
   return clamp01(polygonUnionArea(overlaps, cellBounds.area) / cellBounds.area)
 }
 
-export function estimateShapeCellSubmersions<T extends ShapeSubmersionEntry>(
-  entries: T[],
-  self: T,
-): ShapeSubmergedAreas {
-  return {
-    topLeft: estimateCellSubmersion(entries, self, self.cellBounds.topLeft),
-    topRight: estimateCellSubmersion(entries, self, self.cellBounds.topRight),
-    bottomLeft: estimateCellSubmersion(entries, self, self.cellBounds.bottomLeft),
-    bottomRight: estimateCellSubmersion(entries, self, self.cellBounds.bottomRight),
-  }
-}
-
 export function estimateShapeGridSubmersions<T extends ShapeSubmersionEntry>(
   entries: T[],
   self: T,
@@ -518,17 +458,12 @@ export function estimateShapeGridSubmersions<T extends ShapeSubmersionEntry>(
   }
 }
 
-export function estimateSubmergedAreaPercentagesFromBounds<T extends ShapeSubmersionEntry>(entries: T[]) {
-  return entries.map((entry) => estimateShapeCellSubmersions(entries, entry))
-}
-
 export function smoothUnionGatingInfo(
   left: SdfSample,
   right: SdfSample,
   blendDistance: number,
   normalGating: ResolvedNormalGating,
   blendSupportGating: boolean,
-  blendSupportSubmersionCurve: BlendSupportSubmersionCurve = DEFAULT_BLEND_SUPPORT_SUBMERSION_CURVE,
 ) {
   const normalGate = normalGateForNormals(left.normal, right.normal, normalGating)
   const baseBlendDistance = blendDistance * normalGate.gate
@@ -536,7 +471,7 @@ export function smoothUnionGatingInfo(
   const submergedArea = lerp(right.submergedArea, left.submergedArea, baseH)
   const clampedSubmergedArea = clamp01(submergedArea)
   const submergedAreaScale = blendSupportGating
-    ? blendSupportScaleForSubmersion(clampedSubmergedArea, blendSupportSubmersionCurve)
+    ? blendSupportScaleForSubmersion(clampedSubmergedArea)
     : 1
 
   return {

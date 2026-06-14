@@ -60,9 +60,6 @@ import {
   estimateShapeGridSubmersions,
   polygonArea,
   resolveNormalGating,
-  type BlendSupportSampling,
-  type BlendSupportSubmersionCurve,
-  type ShapeSubmergedAreasOf,
   type ShapeSubmersionGrid,
   type ShapeSubmersionEntry,
   type TransformedShapeBounds,
@@ -84,14 +81,6 @@ import type {
 /** Resolves public specular-width semantics into the shader's device-pixel space. */
 export function resolveSpecularWidthPx(specularWidth: SpecularWidth, dpr: number) {
   return specularWidth === 'hairline' ? 1 : specularWidth * dpr
-}
-
-function getBlendSupportSubmersionCurveIndex(curve: BlendSupportSubmersionCurve) {
-  return curve === 'linear' ? 0 : 1
-}
-
-function getBlendSupportSamplingIndex(sampling: BlendSupportSampling) {
-  return sampling === 'bilinear' ? 0 : 1
 }
 
 /** Constructor options for the reusable WebGPU glass core. */
@@ -167,24 +156,6 @@ function shapeBoundsFromCorners(corners: TransformedShapeBounds['polygon']): Tra
     aabb: bounds,
     area: polygonArea(corners),
     polygon: corners,
-  }
-}
-
-function shapeCellBoundsFromMatrix(world: Matrix2D, width: number, height: number): ShapeSubmergedAreasOf<TransformedShapeBounds> {
-  const halfWidth = width * 0.5
-  const halfHeight = height * 0.5
-  const cellBounds = (minX: number, minY: number, maxX: number, maxY: number) => shapeBoundsFromCorners([
-    transformPoint(world, minX, minY),
-    transformPoint(world, maxX, minY),
-    transformPoint(world, maxX, maxY),
-    transformPoint(world, minX, maxY),
-  ])
-
-  return {
-    topLeft: cellBounds(0, 0, halfWidth, halfHeight),
-    topRight: cellBounds(halfWidth, 0, width, halfHeight),
-    bottomLeft: cellBounds(0, halfHeight, halfWidth, height),
-    bottomRight: cellBounds(halfWidth, halfHeight, width, height),
   }
 }
 
@@ -520,7 +491,7 @@ export class WebGpuGlassCore {
   }
 
   private resolveBlendSupportCellSize(container: Container) {
-    return Math.max(container.blendSupportCellSize, MIN_BLEND_SUPPORT_CELL_SIZE)
+    return Math.max(container.blendSupportGating.cellSize, MIN_BLEND_SUPPORT_CELL_SIZE)
   }
 
   /** Writes per-container global shader parameters. */
@@ -546,15 +517,12 @@ export class WebGpuGlassCore {
         normalGatingEnabled: normalGating.enabled ? 1 : 0,
       },
       sdfParams0: {
-        blendSupportGatingEnabled: container.blendSupportGating ? 1 : 0,
+        blendSupportGatingEnabled: container.blendSupportGating.enabled ? 1 : 0,
         smoothUnionAcceleration: clamp(container.smoothUnion.acceleration, 0, 1),
-        blendSupportKernelRadius: container.blendSupportKernelRadius,
-        blendSupportSubmersionCurve: getBlendSupportSubmersionCurveIndex(container.blendSupportSubmersionCurve),
       },
       sdfParams2: {
         normalGatingHermiteKnee: clamp(normalGating.hermiteKnee, 0, 1),
         normalGatingHermiteCap: clamp(normalGating.hermiteCap, 0, 1),
-        blendSupportSampling: getBlendSupportSamplingIndex(container.blendSupportSampling),
       },
       glass: {
         thickness: container.thickness * dpr,
@@ -647,7 +615,6 @@ export class WebGpuGlassCore {
       const bottomLeft = transformPoint(worldDevice, 0, glass.height)
       const bottomRight = transformPoint(worldDevice, glass.width, glass.height)
       const shapeBounds = shapeBoundsFromCorners([topLeft, topRight, bottomRight, bottomLeft])
-      const cellBounds = shapeCellBoundsFromMatrix(worldDevice, glass.width, glass.height)
       const submersionGrid = shapeSubmersionGridFromMatrix(
         worldDevice,
         glass.width,
@@ -662,7 +629,6 @@ export class WebGpuGlassCore {
       const halfHeight = glass.height * 0.5
       packedShapes.push({
         bounds: shapeBounds,
-        cellBounds,
         contentRange: contentRange ?? undefined,
         cornerRadius: glass.cornerRadius,
         cornerSmoothing: glass.cornerSmoothing,
@@ -679,7 +645,7 @@ export class WebGpuGlassCore {
 
     const submersionCellValues: number[] = []
     for (const shape of packedShapes) {
-      const gridValues = container.blendSupportGating
+      const gridValues = container.blendSupportGating.enabled
         ? estimateShapeGridSubmersions(packedShapes, shape).values
         : Array.from({ length: shape.submersionGrid.cells.length }, () => 0)
       shape.submersionCellOffset = submersionCellValues.length

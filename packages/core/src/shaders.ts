@@ -166,6 +166,7 @@ const SDF_EPSILON: f32 = 0.0001;
 const SDF_GRADIENT_STEP_PX: f32 = 1.0;
 const SDF_NORMAL_ANGLE_INV_PI: f32 = 0.3183098861837907;
 const SDF_SMOOTH_UNION_DEPTH: f32 = 0.25;
+const SDF_BLEND_SUPPORT_KERNEL_RADIUS: i32 = 2;
 const DEBUG_DISPLACEMENT_ENCODE_SCALE: f32 = 0.01;
 // Smooth blending can flatten the fused SDF so one distance unit covers
 // more than one screen pixel. Specular is a screen-space rim effect, so it
@@ -303,25 +304,8 @@ fn shapeSubmergedArea(shape: ShapeData, localPos: vec2f) -> f32 {
   let columns = max(u32(round(shape.submersionGrid.y)), 1u);
   let rows = max(u32(round(shape.submersionGrid.z)), 1u);
   let gridCoord = uv * vec2f(f32(columns), f32(rows)) - vec2f(0.5);
-
-  if (globals.sdfParams2.z < 0.5) {
-    let base = vec2i(floor(gridCoord));
-    let fraction = gridCoord - vec2f(base);
-    let top = mix(
-      submersionGridValue(shape, base.x, base.y, columns, rows),
-      submersionGridValue(shape, base.x + 1, base.y, columns, rows),
-      fraction.x,
-    );
-    let bottom = mix(
-      submersionGridValue(shape, base.x, base.y + 1, columns, rows),
-      submersionGridValue(shape, base.x + 1, base.y + 1, columns, rows),
-      fraction.x,
-    );
-    return mix(top, bottom, fraction.y);
-  }
-
   let center = vec2i(floor(gridCoord + vec2f(0.5)));
-  let kernelRadius = i32(clamp(round(globals.sdfParams0.z), 1.0, 2.0));
+  let kernelRadius = SDF_BLEND_SUPPORT_KERNEL_RADIUS;
   var weightedSum = 0.0;
   var weightSum = 0.0;
 
@@ -429,10 +413,6 @@ fn submergedAreaKScale(submergedArea: f32) -> f32 {
   }
 
   let area = clamp(submergedArea, 0.0, 1.0);
-  if (globals.sdfParams0.w < 0.5) {
-    return 1.0 - area;
-  }
-
   return 1.0 - smoothstep01(area);
 }
 

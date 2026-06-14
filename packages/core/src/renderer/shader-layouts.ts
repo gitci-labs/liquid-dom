@@ -14,13 +14,10 @@ export const GlobalsLayout = structLayout({
   sdfParams0: vec4(
     'blendSupportGatingEnabled',
     'smoothUnionAcceleration',
-    'blendSupportKernelRadius',
-    'blendSupportSubmersionCurve',
   ),
   sdfParams2: vec4(
     'normalGatingHermiteKnee',
     'normalGatingHermiteCap',
-    'blendSupportSampling',
   ),
   glass: vec4('thickness', 'displacementFactor', 'ior', 'dispersion'),
   content: vec4('ior', 'depth'),

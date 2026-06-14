@@ -195,11 +195,10 @@ describe('layout UI tree', () => {
       hermiteCap: 0.84,
       hermiteKnee: 0.7,
     })
-    expect(defaultContainer.blendSupportGating).toBe(true)
-    expect(defaultContainer.blendSupportCellSize).toBe(100)
-    expect(defaultContainer.blendSupportKernelRadius).toBe(2)
-    expect(defaultContainer.blendSupportSampling).toBe('gaussian')
-    expect(defaultContainer.blendSupportSubmersionCurve).toBe('smoothstep')
+    expect(defaultContainer.blendSupportGating).toEqual({
+      enabled: true,
+      cellSize: 100,
+    })
     expect(defaultContainer.smoothUnion).toEqual({
       acceleration: 0.35,
     })
@@ -209,11 +208,10 @@ describe('layout UI tree', () => {
         hermiteKnee: 0.72,
         hermiteCap: 0.86,
       },
-      blendSupportGating: false,
-      blendSupportCellSize: 48,
-      blendSupportKernelRadius: 1,
-      blendSupportSampling: 'bilinear',
-      blendSupportSubmersionCurve: 'linear',
+      blendSupportGating: {
+        enabled: false,
+        cellSize: 48,
+      },
       smoothUnion: {
         acceleration: 0.4,
       },
@@ -223,32 +221,29 @@ describe('layout UI tree', () => {
       hermiteCap: 0.86,
       hermiteKnee: 0.72,
     })
-    expect(container.blendSupportGating).toBe(false)
-    expect(container.blendSupportCellSize).toBe(48)
-    expect(container.blendSupportKernelRadius).toBe(1)
-    expect(container.blendSupportSampling).toBe('bilinear')
-    expect(container.blendSupportSubmersionCurve).toBe('linear')
+    expect(container.blendSupportGating).toEqual({
+      enabled: false,
+      cellSize: 48,
+    })
     expect(container.smoothUnion).toEqual({
       acceleration: 0.4,
     })
 
     container.normalGating = false
-    container.blendSupportGating = true
-    container.blendSupportCellSize = 24
-    container.blendSupportKernelRadius = 2
-    container.blendSupportSampling = 'gaussian'
-    container.blendSupportSubmersionCurve = 'smoothstep'
+    container.blendSupportGating = {
+      enabled: true,
+      cellSize: 24,
+    }
     container.smoothUnion = { acceleration: 0.5 }
     expect(container.normalGating).toEqual({
       enabled: false,
       hermiteCap: 0.84,
       hermiteKnee: 0.7,
     })
-    expect(container.blendSupportGating).toBe(true)
-    expect(container.blendSupportCellSize).toBe(24)
-    expect(container.blendSupportKernelRadius).toBe(2)
-    expect(container.blendSupportSampling).toBe('gaussian')
-    expect(container.blendSupportSubmersionCurve).toBe('smoothstep')
+    expect(container.blendSupportGating).toEqual({
+      enabled: true,
+      cellSize: 24,
+    })
     expect(container.smoothUnion).toEqual({
       acceleration: 0.5,
     })
@@ -270,23 +265,17 @@ describe('layout UI tree', () => {
       hermiteCap: 0.82,
     }
     container.blendSupportGating = false
-    container.blendSupportKernelRadius = 1
-    container.blendSupportSampling = 'bilinear'
-    container.blendSupportSubmersionCurve = 'linear'
 
     expect(container.sceneNode.normalGating).toEqual({
       enabled: false,
       hermiteCap: 0.82,
       hermiteKnee: 0.76,
     })
-    expect(container.sceneNode.blendSupportGating).toBe(false)
-    expect(container.sceneNode.blendSupportKernelRadius).toBe(1)
-    expect(container.sceneNode.blendSupportSampling).toBe('bilinear')
-    expect(container.sceneNode.blendSupportSubmersionCurve).toBe('linear')
+    expect(container.sceneNode.blendSupportGating).toEqual({
+      enabled: false,
+      cellSize: 100,
+    })
     expect(events).toEqual([
-      'frame',
-      'frame',
-      'frame',
       'frame',
       'frame',
     ])

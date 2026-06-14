@@ -199,7 +199,7 @@ Default values:
 | `shadowBlur` | `24` |
 | `shadowSpread` | `0` |
 | `debugDisplacement` | `false` |
-| `blendSupportGating` | `true` |
+| `blendSupportGating` | `{ enabled: true, cellSize: 100 }` |
 | `zIndex` | `0` |
 
 `specularWidth` accepts a CSS pixel number or `'hairline'`. Numeric values scale with DPR; `'hairline'` resolves to one device pixel at the active DPR.

@@ -17,7 +17,6 @@ import {
 } from '@liquid-dom/layout/dom'
 import {
   Container as SceneContainer,
-  DEFAULT_BLEND_SUPPORT_CELL_SIZE,
   Glass as SceneGlass,
   Group as SceneGroup,
   Html as SceneHtml,
@@ -27,20 +26,15 @@ import {
   type GlassInit,
 } from './scene'
 import {
-  DEFAULT_BLEND_SUPPORT_KERNEL_RADIUS,
-  DEFAULT_BLEND_SUPPORT_SAMPLING,
-  DEFAULT_BLEND_SUPPORT_SUBMERSION_CURVE,
-  resolveBlendSupportKernelRadius,
-  resolveBlendSupportSampling,
-  resolveBlendSupportSubmersionCurve,
+  resolveBlendSupportGating,
   resolveNormalGating,
   resolveSmoothUnionOptions,
+  sameBlendSupportGating,
   sameNormalGating,
   sameSmoothUnionOptions,
-  type BlendSupportKernelRadius,
-  type BlendSupportSampling,
-  type BlendSupportSubmersionCurve,
+  type BlendSupportGating,
   type NormalGating,
+  type ResolvedBlendSupportGating,
   type ResolvedNormalGating,
   type SmoothUnionOptions,
 } from './sdf'
@@ -1008,56 +1002,15 @@ export class GlassContainer extends SingleChildUiNode<LayoutNode, SceneContainer
     }
   }
 
-  get blendSupportGating(): boolean {
+  get blendSupportGating(): ResolvedBlendSupportGating {
     return this.sceneNode.blendSupportGating
   }
 
-  set blendSupportGating(value: boolean) {
-    if (setProperty(this.sceneNode, 'blendSupportGating', value)) {
+  set blendSupportGating(value: BlendSupportGating | undefined) {
+    const next = resolveBlendSupportGating(value)
+    if (!sameBlendSupportGating(this.sceneNode.blendSupportGating, next)) {
+      this.sceneNode.blendSupportGating = next
       this.invalidateFrame('blendSupportGating')
-    }
-  }
-
-  get blendSupportCellSize(): number {
-    return this.sceneNode.blendSupportCellSize
-  }
-
-  set blendSupportCellSize(value: number | undefined) {
-    if (setProperty(this.sceneNode, 'blendSupportCellSize', value ?? DEFAULT_BLEND_SUPPORT_CELL_SIZE)) {
-      this.invalidateFrame('blendSupportCellSize')
-    }
-  }
-
-  get blendSupportKernelRadius(): BlendSupportKernelRadius {
-    return this.sceneNode.blendSupportKernelRadius
-  }
-
-  set blendSupportKernelRadius(value: BlendSupportKernelRadius | undefined) {
-    const next = resolveBlendSupportKernelRadius(value ?? DEFAULT_BLEND_SUPPORT_KERNEL_RADIUS)
-    if (setProperty(this.sceneNode, 'blendSupportKernelRadius', next)) {
-      this.invalidateFrame('blendSupportKernelRadius')
-    }
-  }
-
-  get blendSupportSubmersionCurve(): BlendSupportSubmersionCurve {
-    return this.sceneNode.blendSupportSubmersionCurve
-  }
-
-  set blendSupportSubmersionCurve(value: BlendSupportSubmersionCurve | undefined) {
-    const next = resolveBlendSupportSubmersionCurve(value ?? DEFAULT_BLEND_SUPPORT_SUBMERSION_CURVE)
-    if (setProperty(this.sceneNode, 'blendSupportSubmersionCurve', next)) {
-      this.invalidateFrame('blendSupportSubmersionCurve')
-    }
-  }
-
-  get blendSupportSampling(): BlendSupportSampling {
-    return this.sceneNode.blendSupportSampling
-  }
-
-  set blendSupportSampling(value: BlendSupportSampling | undefined) {
-    const next = resolveBlendSupportSampling(value ?? DEFAULT_BLEND_SUPPORT_SAMPLING)
-    if (setProperty(this.sceneNode, 'blendSupportSampling', next)) {
-      this.invalidateFrame('blendSupportSampling')
     }
   }
 

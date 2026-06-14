@@ -464,7 +464,10 @@ describe('React layout components', () => {
       hermiteCap: 0.86,
       hermiteKnee: 0.72,
     })
-    expect(containerRef.current?.blendSupportGating).toBe(false)
+    expect(containerRef.current?.blendSupportGating).toEqual({
+      enabled: false,
+      cellSize: 100,
+    })
 
     await view.rerender(
       <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
@@ -485,7 +488,10 @@ describe('React layout components', () => {
       hermiteCap: 0.84,
       hermiteKnee: 0.7,
     })
-    expect(containerRef.current?.blendSupportGating).toBe(true)
+    expect(containerRef.current?.blendSupportGating).toEqual({
+      enabled: true,
+      cellSize: 100,
+    })
 
     await view.rerender(
       <LiquidCanvas frameloop="demand" proposal={{ width: 320, height: 200 }}>
@@ -510,7 +516,10 @@ describe('React layout components', () => {
       hermiteCap: 0.88,
       hermiteKnee: 0.74,
     })
-    expect(containerRef.current?.blendSupportGating).toBe(false)
+    expect(containerRef.current?.blendSupportGating).toEqual({
+      enabled: false,
+      cellSize: 100,
+    })
   })
 
   it('keeps child order stable through StrictMode effect replay', async () => {
