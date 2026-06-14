@@ -151,7 +151,7 @@ struct VertexOutput {
   @location(0) uv: vec2f,
 };
 
-// Smooth union uses the classic polynomial smooth-min only after a normal gate.
+// Smooth union applies a conservative finite-band smooth-min profile after a normal gate.
 // Nearly aligned normals are treated as duplicate or nested boundaries and fall
 // back toward a hard union; diverging normals get the full blend radius so real
 // corners can form a rounded transition. A per-shape submerged-area estimate can
@@ -162,6 +162,7 @@ struct VertexOutput {
 const SDF_EPSILON: f32 = 0.0001;
 const SDF_GRADIENT_STEP_PX: f32 = 1.0;
 const SDF_NORMAL_ANGLE_INV_PI: f32 = 0.3183098861837907;
+const SDF_SMOOTH_UNION_DEPTH: f32 = 0.25;
 const DEBUG_DISPLACEMENT_ENCODE_SCALE: f32 = 0.01;
 // Smooth blending can flatten the fused SDF so one distance unit covers
 // more than one screen pixel. Specular is a screen-space rim effect, so it
@@ -180,6 +181,12 @@ struct SdfSample {
   distance: f32,
   gradient: vec2f,
   submergedArea: f32,
+};
+
+struct SmoothUnionResult {
+  distance: f32,
+  leftWeight: f32,
+  rightWeight: f32,
 };
 
 fn normalizeSdfGradient(gradient: vec2f) -> vec2f {
@@ -298,6 +305,56 @@ fn smoothUnionWeight(left: SdfSample, right: SdfSample, blendDistance: f32) -> f
   return clamp(0.5 + 0.5 * (right.distance - left.distance) / max(blendDistance, SDF_EPSILON), 0.0, 1.0);
 }
 
+fn hardUnionResult(leftDistance: f32, rightDistance: f32) -> SmoothUnionResult {
+  if (leftDistance <= rightDistance) {
+    return SmoothUnionResult(leftDistance, 1.0, 0.0);
+  }
+
+  return SmoothUnionResult(rightDistance, 0.0, 1.0);
+}
+
+fn finiteSmoothUnionResult(
+  leftDistance: f32,
+  rightDistance: f32,
+  correction: f32,
+  correctionDerivative: f32,
+) -> SmoothUnionResult {
+  let leftIsMin = leftDistance <= rightDistance;
+  let leftWeight = select(correctionDerivative, 1.0 - correctionDerivative, leftIsMin);
+  return SmoothUnionResult(
+    min(leftDistance, rightDistance) - correction,
+    leftWeight,
+    1.0 - leftWeight,
+  );
+}
+
+fn conservativeSmoothUnionResult(leftDistance: f32, rightDistance: f32, blendDistance: f32) -> SmoothUnionResult {
+  let k = max(blendDistance, SDF_EPSILON);
+  let progress = clamp(1.0 - abs(leftDistance - rightDistance) / k, 0.0, 1.0);
+  if (progress <= SDF_EPSILON) {
+    return hardUnionResult(leftDistance, rightDistance);
+  }
+
+  let acceleration = clamp(globals.sdfParams0.y, 0.0, 1.0);
+  let inverseProgress = 1.0 - progress;
+  let remappedProgress = clamp(
+    progress - acceleration * progress * inverseProgress * inverseProgress,
+    0.0,
+    1.0,
+  );
+  let remapDerivative = 1.0 - acceleration * (
+    inverseProgress * inverseProgress -
+    2.0 * progress * inverseProgress
+  );
+  let correction = k * SDF_SMOOTH_UNION_DEPTH * remappedProgress * remappedProgress;
+  let derivative = clamp(2.0 * SDF_SMOOTH_UNION_DEPTH * remappedProgress * remapDerivative, 0.0, 1.0);
+  return finiteSmoothUnionResult(leftDistance, rightDistance, correction, derivative);
+}
+
+fn smoothUnionResult(leftDistance: f32, rightDistance: f32, blendDistance: f32) -> SmoothUnionResult {
+  return conservativeSmoothUnionResult(leftDistance, rightDistance, blendDistance);
+}
+
 fn submergedAreaKScale(submergedArea: f32) -> f32 {
   if (globals.sdfParams0.x <= 0.5) {
     return 1.0;
@@ -327,10 +384,10 @@ fn smoothUnion(
     return hardUnion(left, right);
   }
 
-  let h = smoothUnionWeight(left, right, blendDistance);
+  let unionResult = smoothUnionResult(left.distance, right.distance, blendDistance);
   return SdfSample(
-    mix(right.distance, left.distance, h) - blendDistance * h * (1.0 - h),
-    normalizeSdfGradient(mix(right.gradient, left.gradient, h)),
+    unionResult.distance,
+    normalizeSdfGradient(left.gradient * unionResult.leftWeight + right.gradient * unionResult.rightWeight),
     submergedArea,
   );
 }

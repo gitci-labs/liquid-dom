@@ -8,6 +8,7 @@ import {
 import { Leva, useControls } from 'leva'
 import { createPlugin, useInputContext } from 'leva/plugin'
 import {
+  DEFAULT_SMOOTH_UNION,
   resolveNormalGating,
   sdfUtils,
 } from '@liquid-dom/core'
@@ -32,6 +33,9 @@ const CONTAINER_SPACING = 160
 const MIN_CONTAINER_SPACING = 0
 const MAX_CONTAINER_SPACING = 160
 const BLEND_SUPPORT_GATING_ENABLED = true
+const MIN_SMOOTH_UNION_PARAMETER = 0
+const MAX_SMOOTH_UNION_PARAMETER = 1
+const SMOOTH_UNION_PARAMETER_STEP = 0.01
 const NORMAL_GATING_HERMITE_KNEE = 0.7
 const NORMAL_GATING_HERMITE_CAP = 0.84
 const MIN_NORMAL_GATING_HERMITE_PARAMETER = 0
@@ -47,6 +51,7 @@ const PLOT_WIDTH = 800
 const PLOT_HEIGHT = 240
 const PLOT_MARGIN = { top: 18, right: 18, bottom: 18, left: 18 }
 const PLOT_STEPS = 96
+const DEBUG_OVERLAY_STORAGE_KEY = 'liquid-glass-blending-debug-overlay-visible'
 
 type ShapeId = 'left' | 'right'
 type ResizeEdge = 'left' | 'right' | 'top' | 'bottom'
@@ -73,6 +78,7 @@ type BlendingControls = {
   normalGatingHermiteCap: number
   normalGatingHermiteKnee: number
   blendSupportGatingEnabled: boolean
+  smoothUnionAcceleration: number
 }
 
 type GatingPlotValue = {
@@ -143,6 +149,30 @@ const normalGatePlotControl = createPlugin<
   component: GatingPlotControl,
 })
 
+function getInitialDebugOverlayVisible() {
+  try {
+    const storedValue = window.localStorage.getItem(DEBUG_OVERLAY_STORAGE_KEY)
+    if (storedValue === 'true') {
+      return true
+    }
+    if (storedValue === 'false') {
+      return false
+    }
+  } catch {
+    return true
+  }
+
+  return true
+}
+
+function storeDebugOverlayVisible(visible: boolean) {
+  try {
+    window.localStorage.setItem(DEBUG_OVERLAY_STORAGE_KEY, String(visible))
+  } catch {
+    // Ignore storage failures; the control should still work for the session.
+  }
+}
+
 export default function App() {
   const stageRef = useRef<HTMLDivElement | null>(null)
   const sceneRef = useRef<LiquidSceneRef | null>(null)
@@ -157,6 +187,7 @@ export default function App() {
     normalGatingHermiteCap,
     normalGatingHermiteKnee,
     blendSupportGatingEnabled,
+    smoothUnionAcceleration,
   }, setControls] = useControls(() => ({
     blendingDistance: {
       value: CONTAINER_SPACING,
@@ -201,8 +232,15 @@ export default function App() {
       value: BLEND_SUPPORT_GATING_ENABLED,
       label: 'Enable blend support gating',
     },
+    smoothUnionAcceleration: {
+      value: DEFAULT_SMOOTH_UNION.acceleration,
+      min: MIN_SMOOTH_UNION_PARAMETER,
+      max: MAX_SMOOTH_UNION_PARAMETER,
+      step: SMOOTH_UNION_PARAMETER_STEP,
+      label: 'Smooth min acceleration',
+    },
     boundsVisible: {
-      value: false,
+      value: getInitialDebugOverlayVisible(),
       label: 'Show debug overlay',
     },
   }), []) as unknown as [BlendingPanelValues, (values: Partial<BlendingPanelValues>) => void]
@@ -231,6 +269,8 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    storeDebugOverlayVisible(boundsVisible)
+
     if (!boundsVisible) {
       setHoverPoint(null)
     }
@@ -256,6 +296,7 @@ export default function App() {
     normalGatingHermiteKnee,
     requestSceneRender,
     shapes,
+    smoothUnionAcceleration,
   ])
 
   function getStagePoint(event: ReactPointerEvent<HTMLElement>): StagePoint {
@@ -397,6 +438,9 @@ export default function App() {
                     hermiteKnee: normalGatingHermiteKnee,
                   }}
                   blendSupportGating={blendSupportGatingEnabled}
+                  smoothUnion={{
+                    acceleration: smoothUnionAcceleration,
+                  }}
                   bezelWidth={18}
                   displacementBlur={8}
                   thickness={86}

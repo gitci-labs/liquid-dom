@@ -13,6 +13,7 @@ export const GlobalsLayout = structLayout({
   sdf: vec4('normalGatingEnabled'),
   sdfParams0: vec4(
     'blendSupportGatingEnabled',
+    'smoothUnionAcceleration',
   ),
   sdfParams2: vec4(
     'normalGatingHermiteKnee',

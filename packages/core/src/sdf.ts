@@ -16,6 +16,14 @@ export type ResolvedNormalGating = {
   hermiteKnee: number
 }
 
+export type SmoothUnionOptions = {
+  acceleration?: number
+}
+
+export type ResolvedSmoothUnionOptions = {
+  acceleration: number
+}
+
 export type ShapeSubmergedAreasOf<T> = {
   bottomLeft: T
   bottomRight: T
@@ -55,6 +63,10 @@ export const DEFAULT_NORMAL_GATING: ResolvedNormalGating = {
   hermiteKnee: 0.7,
 }
 
+export const DEFAULT_SMOOTH_UNION: ResolvedSmoothUnionOptions = {
+  acceleration: 0.35,
+}
+
 export function clamp01(value: number) {
   return Math.min(Math.max(value, 0), 1)
 }
@@ -88,6 +100,19 @@ export function sameNormalGating(left: ResolvedNormalGating, right: ResolvedNorm
     Object.is(left.hermiteCap, right.hermiteCap) &&
     Object.is(left.hermiteKnee, right.hermiteKnee)
   )
+}
+
+export function resolveSmoothUnionOptions(options: SmoothUnionOptions | undefined): ResolvedSmoothUnionOptions {
+  return {
+    acceleration: options?.acceleration ?? DEFAULT_SMOOTH_UNION.acceleration,
+  }
+}
+
+export function sameSmoothUnionOptions(
+  left: ResolvedSmoothUnionOptions,
+  right: ResolvedSmoothUnionOptions,
+) {
+  return Object.is(left.acceleration, right.acceleration)
 }
 
 export function hermiteCapGate(value: number, kneeInput: number, capInput: number) {

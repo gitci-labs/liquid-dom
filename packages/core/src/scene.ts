@@ -7,9 +7,13 @@ import {
 import { composeTransform, identityMatrix, multiplyMatrices, type Matrix2D } from './matrix'
 import {
   DEFAULT_NORMAL_GATING,
+  DEFAULT_SMOOTH_UNION,
   resolveNormalGating,
+  resolveSmoothUnionOptions,
   type NormalGating,
   type ResolvedNormalGating,
+  type ResolvedSmoothUnionOptions,
+  type SmoothUnionOptions,
 } from './sdf'
 import type {
   Point,
@@ -66,6 +70,7 @@ export type ContainerInit = Partial<Transform> & {
   displacementBlur?: number
   normalGating?: NormalGating
   blendSupportGating?: boolean
+  smoothUnion?: SmoothUnionOptions
   ior?: number
   contentIor?: number
   contentDepth?: number
@@ -679,6 +684,15 @@ export class Container implements Transform {
   }
   /** Enables shape-area-based modulation of the SDF smooth-union radius. */
   blendSupportGating = true
+  private _smoothUnion: ResolvedSmoothUnionOptions = { ...DEFAULT_SMOOTH_UNION }
+  /** Smooth-min correction profile parameters used when fusing neighboring shapes. */
+  get smoothUnion(): ResolvedSmoothUnionOptions {
+    return this._smoothUnion
+  }
+
+  set smoothUnion(value: SmoothUnionOptions | undefined) {
+    this._smoothUnion = resolveSmoothUnionOptions(value)
+  }
   /** Refractive index used for the displacement model. */
   ior = 1.5
   /** Refractive index used when refracting DOM content rendered inside the glass. */
@@ -760,6 +774,9 @@ export class Container implements Transform {
     }
     if (options.blendSupportGating !== undefined) {
       this.blendSupportGating = options.blendSupportGating
+    }
+    if (options.smoothUnion !== undefined) {
+      this.smoothUnion = options.smoothUnion
     }
     if (options.ior !== undefined) {
       this.ior = options.ior

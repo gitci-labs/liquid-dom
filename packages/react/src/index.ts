@@ -84,5 +84,7 @@ export type {
 export type {
   NormalGating,
   NormalGatingOptions,
+  ResolvedSmoothUnionOptions,
   ResolvedNormalGating,
+  SmoothUnionOptions,
 } from '@liquid-dom/core'

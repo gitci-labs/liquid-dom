@@ -1,4 +1,5 @@
 export {
+  DEFAULT_SMOOTH_UNION,
   SDF_EPSILON,
   aabbArea,
   aabbFromPoints,
@@ -15,6 +16,7 @@ export {
   polygonArea,
   polygonSignedArea,
   polygonUnionArea,
+  resolveSmoothUnionOptions,
   shapeSubmergedAreaAtCenteredLocal,
   shapeSubmergedAreaAtLocal,
   smoothUnionGatingInfo,
@@ -26,5 +28,7 @@ export type {
   SdfSample,
   ShapeSubmergedAreas,
   ShapeSubmersionEntry,
+  SmoothUnionOptions,
+  ResolvedSmoothUnionOptions,
   TransformedShapeBounds,
 } from './sdf'

@@ -27,9 +27,12 @@ import {
 } from './scene'
 import {
   resolveNormalGating,
+  resolveSmoothUnionOptions,
   sameNormalGating,
+  sameSmoothUnionOptions,
   type NormalGating,
   type ResolvedNormalGating,
+  type SmoothUnionOptions,
 } from './sdf'
 import type {
   Alignment,
@@ -1002,6 +1005,18 @@ export class GlassContainer extends SingleChildUiNode<LayoutNode, SceneContainer
   set blendSupportGating(value: boolean) {
     if (setProperty(this.sceneNode, 'blendSupportGating', value)) {
       this.invalidateFrame('blendSupportGating')
+    }
+  }
+
+  get smoothUnion(): SceneContainer['smoothUnion'] {
+    return this.sceneNode.smoothUnion
+  }
+
+  set smoothUnion(value: SmoothUnionOptions | undefined) {
+    const next = resolveSmoothUnionOptions(value)
+    if (!sameSmoothUnionOptions(this.sceneNode.smoothUnion, next)) {
+      this.sceneNode.smoothUnion = next
+      this.invalidateFrame('smoothUnion')
     }
   }
 
