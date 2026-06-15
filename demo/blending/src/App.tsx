@@ -10,6 +10,8 @@ import { BlendingGlassScene, ShapeInteractionLayer } from './BlendingScene'
 import { BoundsOverlay } from './BoundsOverlay'
 import {
   INITIAL_SHAPES,
+  MAX_CONTAINER_SPACING,
+  MIN_CONTAINER_SPACING,
   SAMPLE_VISUALIZATION_OPACITY,
 } from './constants'
 import { useBlendingControls } from './controls'
@@ -106,15 +108,28 @@ export default function App() {
             sceneRef={sceneRef}
             stageSize={stageSize}
           />
-          <button
-            aria-pressed={improvedEnabled}
-            className={`blending-improved-toggle ${improvedEnabled ? 'active' : ''}`}
-            type="button"
-            onClick={() => setImprovedEnabled(!improvedEnabled)}
-          >
-            <span className="blending-improved-checkbox" aria-hidden="true" />
-            Improved
-          </button>
+          <div className="blending-stage-controls">
+            <button
+              aria-pressed={improvedEnabled}
+              className={`blending-improved-toggle ${improvedEnabled ? 'active' : ''}`}
+              type="button"
+              onClick={() => setImprovedEnabled(!improvedEnabled)}
+            >
+              <span className="blending-improved-checkbox" aria-hidden="true" />
+              Improved
+            </button>
+            <label className="blending-spacing-control">
+              <span>Spacing</span>
+              <input
+                type="range"
+                min={MIN_CONTAINER_SPACING}
+                max={MAX_CONTAINER_SPACING}
+                step={1}
+                value={controls.blendingDistance}
+                onChange={(event) => setControls({ blendingDistance: Number(event.currentTarget.value) })}
+              />
+            </label>
+          </div>
           <BlendingGlassScene
             controls={controls}
             requestSceneRender={requestSceneRender}
@@ -146,6 +161,21 @@ export default function App() {
           />
         </section>
       </div>
+      <footer className="blending-footer">
+        <p>
+          Made with ❤️ by{' '}
+          <a href="https://x.com/AndrewPrifer" target="_blank" rel="noreferrer">
+            Andrew Prifer
+          </a>
+        </p>
+        <p>
+          Check out the source code and the Liquid DOM library on{' '}
+          <a href="https://github.com/AndrewPrifer/liquid-dom" target="_blank" rel="noreferrer">
+            GitHub
+          </a>
+          .
+        </p>
+      </footer>
     </main>
   )
 }
