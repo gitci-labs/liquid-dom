@@ -105,6 +105,7 @@ export default function MusicSidebarDemo() {
 
           <Frame maxWidth={Infinity} maxHeight={Infinity}>
             <GlassContainer
+              blendSupportGating={false}
               blur={200}
               bezelWidth={170}
               displacementBlur={25}

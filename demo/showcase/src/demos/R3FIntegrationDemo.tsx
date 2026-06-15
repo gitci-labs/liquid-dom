@@ -210,6 +210,7 @@ function LiquidGlassPanel({ children }: { children: React.ReactNode }) {
     <Frame maxWidth={Infinity} maxHeight={Infinity} alignment='topTrailing'>
       <Padding insets={20}>
         <GlassContainer
+          blendSupportGating={false}
           blur={12}
           tint={{ r: 0.9, g: 0.9, b: 0.9, a: hovering ? 0.15 : 0.1 }}
           specularOpacity={0.4}

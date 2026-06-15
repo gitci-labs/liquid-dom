@@ -299,6 +299,10 @@ fn submersionGridGaussianWeight(offset: vec2f, kernelRadius: i32) -> f32 {
 }
 
 fn shapeSubmergedArea(shape: ShapeData, localPos: vec2f) -> f32 {
+  if (globals.sdfParams0.x <= 0.5) {
+    return 0.0;
+  }
+
   let size = max(shape.geometry.xy * 2.0, vec2f(SDF_EPSILON));
   let uv = clamp(localPos / size, vec2f(0.0), vec2f(1.0));
   let columns = max(u32(round(shape.submersionGrid.y)), 1u);

@@ -237,6 +237,7 @@ function NotificationScene({ nightMode }: { nightMode: boolean }) {
 
       <Frame maxWidth={Infinity} maxHeight={Infinity}>
         <GlassContainer
+          blendSupportGating={false}
           blur={12}
           spacing={10}
           bezelWidth={18}

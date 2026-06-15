@@ -119,6 +119,7 @@ export default function VideoControlsDemo() {
 
           <Frame maxWidth={Infinity} maxHeight={Infinity}>
             <GlassContainer
+              blendSupportGating={false}
               opacity={controlsVisible ? 1 : 0}
               ior={controlsVisible ? CONTROL_VISIBLE_IOR : 1}
               blur={4}

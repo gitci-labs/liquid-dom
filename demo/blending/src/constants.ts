@@ -1,6 +1,7 @@
 import type { ShapeState } from './types'
 
-export const GLASS_WIDTH = 220
+export const TOP_GLASS_WIDTH = 150
+export const BOTTOM_GLASS_WIDTH = 220
 export const GLASS_HEIGHT = 132
 export const GLASS_CORNER_RADIUS = 60
 export const MIN_GLASS_CORNER_RADIUS = 0
@@ -40,17 +41,17 @@ export const DEBUG_OVERLAY_STORAGE_KEY = 'liquid-glass-blending-debug-overlay-vi
 export const INITIAL_SHAPES: ShapeState[] = [
   {
     id: 'left',
-    x: -(GLASS_WIDTH + INITIAL_DISTANCE) / 2,
-    y: 0,
-    width: GLASS_WIDTH,
+    x: 0,
+    y: -(GLASS_HEIGHT + INITIAL_DISTANCE) / 2,
+    width: TOP_GLASS_WIDTH,
     height: GLASS_HEIGHT,
     rotation: 0,
   },
   {
     id: 'right',
-    x: (GLASS_WIDTH + INITIAL_DISTANCE) / 2,
-    y: 0,
-    width: GLASS_WIDTH,
+    x: 0,
+    y: (GLASS_HEIGHT + INITIAL_DISTANCE) / 2,
+    width: BOTTOM_GLASS_WIDTH,
     height: GLASS_HEIGHT,
     rotation: 0,
   },

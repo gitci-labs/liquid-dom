@@ -298,6 +298,7 @@ function NotificationCenterScene() {
       >
         <Padding insets={{ bottom: 19 }}>
           <GlassContainer
+            blendSupportGating={false}
             opacity={appIconsVisible ? 1 : 0}
             transition={{ opacity: APP_ICON_OPACITY_TRANSITION }}
             blur={8}
@@ -338,6 +339,7 @@ function NotificationCenterScene() {
       <Frame maxWidth={Infinity} maxHeight={Infinity}>
         <GlassContainer
           ref={panelContainerRef}
+          blendSupportGating={false}
           ior={getPanelIor(PANEL_OPEN_Y)}
           dispersion={getPanelDispersion(PANEL_OPEN_Y)}
           blur={0}
@@ -382,6 +384,7 @@ function NotificationCenterScene() {
 
       <Frame maxWidth={Infinity} maxHeight={Infinity}>
         <GlassContainer
+          blendSupportGating={false}
           blur={4}
           thickness={20}
           bezelWidth={10}

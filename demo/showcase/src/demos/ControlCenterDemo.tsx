@@ -72,6 +72,7 @@ export default function ControlCenterDemo() {
           >
             <GlassContainer
               ref={glassContainerRef}
+              blendSupportGating={false}
               lightDirection={DEFAULT_LIGHT_DIRECTION}
               bezelWidth={44}
               tint={{ r: 1, g: 1, b: 1, a: 0.12 }}

@@ -119,6 +119,7 @@ type PackedShapeCpuData = ShapeSubmersionEntry & {
   minimumScale: number
   submersionCellOffset: number
   submersionGrid: ShapeSubmersionGrid
+  worldDevice: Matrix2D
 }
 
 type GlobalsBuffer = GpuStructBuffer<GpuStructDefinition<typeof GlobalsLayout>>
@@ -141,6 +142,14 @@ function getSurfaceProfileIndex(profile: SurfaceProfile) {
     return 1
   }
   return 2
+}
+
+function createDisabledSubmersionGrid(): ShapeSubmersionGrid {
+  return {
+    cells: [],
+    columns: 1,
+    rows: 1,
+  }
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -498,6 +507,7 @@ export class WebGpuGlassCore {
   private writeGlobals(container: Container, shapeCount: number) {
     const dpr = this.currentDpr
     const normalGating = resolveNormalGating(container.normalGating)
+    const hasBlendCandidates = shapeCount > 1
 
     this.globalsBuffer.write({
       canvas: {
@@ -514,10 +524,10 @@ export class WebGpuGlassCore {
         surfaceProfile: getSurfaceProfileIndex(container.surfaceProfile),
       },
       sdf: {
-        normalGatingEnabled: normalGating.enabled ? 1 : 0,
+        normalGatingEnabled: normalGating.enabled && hasBlendCandidates ? 1 : 0,
       },
       sdfParams0: {
-        blendSupportGatingEnabled: container.blendSupportGating.enabled ? 1 : 0,
+        blendSupportGatingEnabled: container.blendSupportGating.enabled && hasBlendCandidates ? 1 : 0,
         smoothUnionAcceleration: clamp(container.smoothUnion.acceleration, 0, 1),
       },
       sdfParams2: {
@@ -615,12 +625,6 @@ export class WebGpuGlassCore {
       const bottomLeft = transformPoint(worldDevice, 0, glass.height)
       const bottomRight = transformPoint(worldDevice, glass.width, glass.height)
       const shapeBounds = shapeBoundsFromCorners([topLeft, topRight, bottomRight, bottomLeft])
-      const submersionGrid = shapeSubmersionGridFromMatrix(
-        worldDevice,
-        glass.width,
-        glass.height,
-        blendSupportCellSize,
-      )
       expandBounds(bounds, shapeBounds.aabb.minX, shapeBounds.aabb.minY)
       expandBounds(bounds, shapeBounds.aabb.maxX, shapeBounds.aabb.maxY)
 
@@ -637,15 +641,28 @@ export class WebGpuGlassCore {
         inverse,
         minimumScale: getMinimumScale(worldDevice),
         submersionCellOffset: 0,
-        submersionGrid,
+        submersionGrid: createDisabledSubmersionGrid(),
+        worldDevice,
       })
 
       activeCount += 1
     }
 
+    const blendSupportGatingEnabled = container.blendSupportGating.enabled && activeCount > 1
+    if (blendSupportGatingEnabled) {
+      for (const shape of packedShapes) {
+        shape.submersionGrid = shapeSubmersionGridFromMatrix(
+          shape.worldDevice,
+          shape.halfWidth * 2,
+          shape.halfHeight * 2,
+          blendSupportCellSize,
+        )
+      }
+    }
+
     const submersionCellValues: number[] = []
     for (const shape of packedShapes) {
-      const gridValues = container.blendSupportGating.enabled
+      const gridValues = blendSupportGatingEnabled
         ? estimateShapeGridSubmersions(packedShapes, shape).values
         : Array.from({ length: shape.submersionGrid.cells.length }, () => 0)
       shape.submersionCellOffset = submersionCellValues.length

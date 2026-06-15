@@ -238,6 +238,7 @@ export default function MenuDemo() {
                   alignment="topLeading"
                 >
                   <GlassContainer
+                    blendSupportGating={false}
                     spacing={37}
                     bezelWidth={70}
                     thickness={40}
