@@ -36,8 +36,10 @@ export function BlendingGlassScene({
       <ZStack alignment="center">
         <Frame maxWidth={Infinity} maxHeight={Infinity}>
           <GlassContainer
-            blur={7}
+            blur={4}
+            displacementBlur={30}
             spacing={controls.blendingDistance}
+            tint={{ r: 0.73, g: 0.73, b: 0.73, a: 0.45 }}
             normalGating={{
               enabled: controls.normalGatingEnabled,
               hermiteCap: controls.normalGatingHermiteCap,
@@ -50,16 +52,7 @@ export function BlendingGlassScene({
             smoothUnion={{
               acceleration: controls.smoothUnionAcceleration,
             }}
-            bezelWidth={18}
-            displacementBlur={8}
-            thickness={86}
-            contentDepth={18}
-            tint={{ r: 0.73, g: 0.73, b: 0.73, a: 0.45 }}
-            shadowColor={{ r: 0, g: 0, b: 0, a: 0.2 }}
-            shadowOffsetX={0}
-            shadowOffsetY={4}
-            shadowBlur={34}
-            specularOpacity={0.7}
+            bezelWidth={4}
           >
             <ZStack alignment="center">
               {shapes.map((shape) => (
