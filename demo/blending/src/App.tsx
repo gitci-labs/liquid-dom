@@ -21,13 +21,20 @@ export default function App() {
   const stageRef = useRef<HTMLDivElement | null>(null)
   const sceneRef = useRef<LiquidSceneRef | null>(null)
   const requestRenderRef = useRef<() => void>(() => undefined)
-  const controls = useBlendingControls()
+  const { controls, setControls } = useBlendingControls()
   const [shapes, setShapes] = useState(INITIAL_SHAPES)
   const [stageSize, setStageSize] = useState<StageSize>({ width: 0, height: 0 })
   const [hoverPoint, setHoverPoint] = useState<StagePoint | null>(null)
   const requestSceneRender = useCallback(() => {
     requestRenderRef.current()
   }, [])
+  const improvedEnabled = controls.normalGatingEnabled && controls.blendSupportGatingEnabled
+  const setImprovedEnabled = useCallback((enabled: boolean) => {
+    setControls({
+      normalGatingEnabled: enabled,
+      blendSupportGatingEnabled: enabled,
+    })
+  }, [setControls])
   const {
     clearHoverPoint,
     endInteraction,
@@ -99,6 +106,15 @@ export default function App() {
             sceneRef={sceneRef}
             stageSize={stageSize}
           />
+          <button
+            aria-pressed={improvedEnabled}
+            className={`blending-improved-toggle ${improvedEnabled ? 'active' : ''}`}
+            type="button"
+            onClick={() => setImprovedEnabled(!improvedEnabled)}
+          >
+            <span className="blending-improved-checkbox" aria-hidden="true" />
+            Improved
+          </button>
           <BlendingGlassScene
             controls={controls}
             requestSceneRender={requestSceneRender}

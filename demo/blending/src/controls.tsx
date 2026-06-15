@@ -113,7 +113,7 @@ export function useBlendingControls() {
     })
   }, [controls.normalGatingHermiteCap, controls.normalGatingHermiteKnee, setControls])
 
-  return controls
+  return { controls, setControls }
 }
 
 function GatingPlotControl() {

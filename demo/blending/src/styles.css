@@ -77,6 +77,44 @@ select {
   pointer-events: none;
 }
 
+.blending-improved-toggle {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 15px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 22px rgba(0, 0, 0, 0.16);
+  font: 600 13px/1 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  backdrop-filter: blur(18px);
+  pointer-events: auto;
+  user-select: none;
+}
+
+.blending-improved-checkbox {
+  width: 13px;
+  height: 13px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+}
+
+.blending-improved-toggle.active {
+  border-color: rgba(17, 17, 17, 0.12);
+  color: #111111;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.blending-improved-toggle.active .blending-improved-checkbox {
+  background: currentColor;
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.86);
+}
+
 .blending-interaction-layer {
   position: absolute;
   inset: 0;
