@@ -1,0 +1,4 @@
+{
+  "buildCommand": "pnpm --filter blending... build",
+  "outputDirectory": "dist"
+}
