@@ -90,7 +90,7 @@ export default function App() {
   return (
     <main className="blending-app">
       <Leva
-        collapsed={false}
+        collapsed
         oneLineLabels
         theme={{ sizes: { controlWidth: '190px', rootWidth: '360px' } }}
       />
