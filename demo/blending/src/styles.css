@@ -45,7 +45,7 @@ select {
 .blending-stage {
   position: relative;
   width: 100%;
-  aspect-ratio: 4 / 3;
+  height: 600px;
   overflow: hidden;
   border-radius: 28px;
   background: #000000;
