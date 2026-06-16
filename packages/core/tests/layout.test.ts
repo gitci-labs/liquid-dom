@@ -192,8 +192,6 @@ describe('layout UI tree', () => {
     const defaultContainer = new SceneContainer()
     expect(defaultContainer.normalGating).toEqual({
       enabled: true,
-      hermiteCap: 0.84,
-      hermiteKnee: 0.7,
     })
     expect(defaultContainer.blendSupportGating).toEqual({
       enabled: true,
@@ -205,8 +203,7 @@ describe('layout UI tree', () => {
 
     const container = new SceneContainer({
       normalGating: {
-        hermiteKnee: 0.72,
-        hermiteCap: 0.86,
+        enabled: true,
       },
       blendSupportGating: {
         enabled: false,
@@ -218,8 +215,6 @@ describe('layout UI tree', () => {
     })
     expect(container.normalGating).toEqual({
       enabled: true,
-      hermiteCap: 0.86,
-      hermiteKnee: 0.72,
     })
     expect(container.blendSupportGating).toEqual({
       enabled: false,
@@ -237,8 +232,6 @@ describe('layout UI tree', () => {
     container.smoothUnion = { acceleration: 0.5 }
     expect(container.normalGating).toEqual({
       enabled: false,
-      hermiteCap: 0.84,
-      hermiteKnee: 0.7,
     })
     expect(container.blendSupportGating).toEqual({
       enabled: true,
@@ -253,7 +246,7 @@ describe('layout UI tree', () => {
     const scene = new LayoutScene()
     const container = scene.add(new GlassContainer({
       normalGating: {
-        hermiteKnee: 0.72,
+        enabled: true,
       },
     }))
     const events: string[] = []
@@ -261,15 +254,11 @@ describe('layout UI tree', () => {
 
     container.normalGating = {
       enabled: false,
-      hermiteKnee: 0.76,
-      hermiteCap: 0.82,
     }
     container.blendSupportGating = false
 
     expect(container.sceneNode.normalGating).toEqual({
       enabled: false,
-      hermiteCap: 0.82,
-      hermiteKnee: 0.76,
     })
     expect(container.sceneNode.blendSupportGating).toEqual({
       enabled: false,

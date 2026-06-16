@@ -175,61 +175,6 @@ select {
   pointer-events: none;
 }
 
-.blending-plot {
-  width: 100%;
-  color: #111111;
-  font: 600 12px/1 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
-.blending-plot-svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  overflow: visible;
-}
-
-.blending-plot-grid line {
-  stroke: rgba(17, 17, 17, 0.12);
-  stroke-width: 1;
-}
-
-.blending-plot-axis {
-  fill: none;
-  stroke: rgba(17, 17, 17, 0.58);
-  stroke-width: 1.4;
-}
-
-.blending-plot-line {
-  fill: none;
-  stroke-width: 3;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  opacity: 0.96;
-}
-
-.blending-plot-line.hermite-cap {
-  stroke: #8f5b00;
-}
-
-.leva-gating-plot-control {
-  display: grid;
-  gap: 8px;
-  padding: 6px 0 8px;
-}
-
-.leva-gating-plot-control .blending-plot {
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 10px;
-}
-
-.leva-gating-plot-control .blending-plot-grid line {
-  stroke: rgba(255, 255, 255, 0.14);
-}
-
-.leva-gating-plot-control .blending-plot-axis {
-  stroke: rgba(255, 255, 255, 0.48);
-}
-
 .blending-shape-hitbox {
   position: absolute;
   top: 50%;

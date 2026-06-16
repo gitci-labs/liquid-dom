@@ -4,16 +4,12 @@ export const SDF_EPSILON = 0.0001
 
 export type NormalGatingOptions = {
   enabled?: boolean
-  hermiteCap?: number
-  hermiteKnee?: number
 }
 
 export type NormalGating = false | NormalGatingOptions
 
 export type ResolvedNormalGating = {
   enabled: boolean
-  hermiteCap: number
-  hermiteKnee: number
 }
 
 export type SmoothUnionOptions = {
@@ -78,8 +74,6 @@ export type SdfSample = {
 
 export const DEFAULT_NORMAL_GATING: ResolvedNormalGating = {
   enabled: true,
-  hermiteCap: 0.84,
-  hermiteKnee: 0.7,
 }
 
 export const DEFAULT_SMOOTH_UNION: ResolvedSmoothUnionOptions = {
@@ -131,17 +125,11 @@ export function resolveNormalGating(gating: NormalGating | undefined): ResolvedN
 
   return {
     enabled: gating.enabled ?? true,
-    hermiteCap: gating.hermiteCap ?? DEFAULT_NORMAL_GATING.hermiteCap,
-    hermiteKnee: gating.hermiteKnee ?? DEFAULT_NORMAL_GATING.hermiteKnee,
   }
 }
 
 export function sameNormalGating(left: ResolvedNormalGating, right: ResolvedNormalGating) {
-  return (
-    left.enabled === right.enabled &&
-    Object.is(left.hermiteCap, right.hermiteCap) &&
-    Object.is(left.hermiteKnee, right.hermiteKnee)
-  )
+  return left.enabled === right.enabled
 }
 
 export function resolveSmoothUnionOptions(options: SmoothUnionOptions | undefined): ResolvedSmoothUnionOptions {
@@ -182,22 +170,9 @@ export function sameBlendSupportGating(
   return left.enabled === right.enabled && Object.is(left.cellSize, right.cellSize)
 }
 
-export function hermiteCapGate(value: number, kneeInput: number, capInput: number) {
+export function normalAngleGate(value: number) {
   const x = clamp01(value)
-  const cap = clamp01(capInput)
-  const knee = Math.min(clamp01(kneeInput), cap)
-  if (x <= knee) {
-    return x
-  }
-
-  const span = Math.max(1 - knee, SDF_EPSILON)
-  const u = clamp01((x - knee) / span)
-  const u2 = u * u
-  const u3 = u2 * u
-  const h00 = 2 * u3 - 3 * u2 + 1
-  const h10 = u3 - 2 * u2 + u
-  const h01 = -2 * u3 + 3 * u2
-  return clamp01(h00 * knee + h10 * span + h01 * cap)
+  return clamp01(x + x * x - x * x * x)
 }
 
 export function normalGateForNormals(
@@ -211,9 +186,7 @@ export function normalGateForNormals(
   ), 1)
   const angle = Math.acos(alignment)
   const normalizedAngle = clamp01(angle / Math.PI)
-  const gate = gating.enabled
-    ? hermiteCapGate(normalizedAngle, gating.hermiteKnee, gating.hermiteCap)
-    : 1
+  const gate = gating.enabled ? normalAngleGate(normalizedAngle) : 1
 
   return {
     angle,

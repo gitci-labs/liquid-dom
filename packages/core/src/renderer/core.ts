@@ -530,10 +530,6 @@ export class WebGpuGlassCore {
         blendSupportGatingEnabled: container.blendSupportGating.enabled && hasBlendCandidates ? 1 : 0,
         smoothUnionAcceleration: clamp(container.smoothUnion.acceleration, 0, 1),
       },
-      sdfParams2: {
-        normalGatingHermiteKnee: clamp(normalGating.hermiteKnee, 0, 1),
-        normalGatingHermiteCap: clamp(normalGating.hermiteCap, 0, 1),
-      },
       glass: {
         thickness: container.thickness * dpr,
         displacementFactor: container.displacementFactor,

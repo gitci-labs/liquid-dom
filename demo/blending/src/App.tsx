@@ -82,8 +82,6 @@ export default function App() {
     controls.blendingDistance,
     controls.cornerRadius,
     controls.normalGatingEnabled,
-    controls.normalGatingHermiteCap,
-    controls.normalGatingHermiteKnee,
     controls.smoothUnionAcceleration,
     requestSceneRender,
     shapes,
@@ -140,8 +138,6 @@ export default function App() {
             <BoundsOverlay
               blendingDistance={controls.blendingDistance}
               cornerRadius={controls.cornerRadius}
-              hermiteCap={controls.normalGatingHermiteCap}
-              hermiteKnee={controls.normalGatingHermiteKnee}
               hoverPoint={hoverPoint}
               normalGatingEnabled={controls.normalGatingEnabled}
               opacity={SAMPLE_VISUALIZATION_OPACITY}

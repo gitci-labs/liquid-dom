@@ -15,10 +15,6 @@ export const GlobalsLayout = structLayout({
     'blendSupportGatingEnabled',
     'smoothUnionAcceleration',
   ),
-  sdfParams2: vec4(
-    'normalGatingHermiteKnee',
-    'normalGatingHermiteCap',
-  ),
   glass: vec4('thickness', 'displacementFactor', 'ior', 'dispersion'),
   content: vec4('ior', 'depth'),
   lighting: vec4('x', 'y'),

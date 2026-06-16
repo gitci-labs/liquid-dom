@@ -1,6 +1,5 @@
 import { useEffect } from 'react'
 import { useControls } from 'leva'
-import { createPlugin, useInputContext } from 'leva/plugin'
 import {
   BLEND_SUPPORT_CELL_SIZE,
   BLEND_SUPPORT_GATING_ENABLED,
@@ -10,30 +9,15 @@ import {
   MAX_BLEND_SUPPORT_CELL_SIZE,
   MAX_CONTAINER_SPACING,
   MAX_GLASS_CORNER_RADIUS,
-  MAX_NORMAL_GATING_HERMITE_PARAMETER,
   MAX_SMOOTH_UNION_PARAMETER,
   MIN_BLEND_SUPPORT_CELL_SIZE,
   MIN_CONTAINER_SPACING,
   MIN_GLASS_CORNER_RADIUS,
-  MIN_NORMAL_GATING_HERMITE_PARAMETER,
   MIN_SMOOTH_UNION_PARAMETER,
-  NORMAL_GATING_HERMITE_CAP,
-  NORMAL_GATING_HERMITE_KNEE,
-  NORMAL_GATING_HERMITE_PARAMETER_STEP,
   SMOOTH_UNION_ACCELERATION,
   SMOOTH_UNION_PARAMETER_STEP,
 } from './constants'
-import { GatingPlot } from './GatingPlot'
-import type { BlendingPanelValues, GatingPlotValue } from './types'
-
-const normalGatePlotControl = createPlugin<
-  { value: GatingPlotValue },
-  GatingPlotValue,
-  Record<string, never>
->({
-  normalize: (input) => ({ value: input.value }),
-  component: GatingPlotControl,
-})
+import type { BlendingPanelValues } from './types'
 
 export function useBlendingControls() {
   const [controls, setControls] = useControls(() => ({
@@ -55,27 +39,6 @@ export function useBlendingControls() {
       value: true,
       label: 'Enable normal gating',
     },
-    normalGatingHermiteKnee: {
-      value: NORMAL_GATING_HERMITE_KNEE,
-      min: MIN_NORMAL_GATING_HERMITE_PARAMETER,
-      max: MAX_NORMAL_GATING_HERMITE_PARAMETER,
-      step: NORMAL_GATING_HERMITE_PARAMETER_STEP,
-      label: 'Hermite cap knee',
-    },
-    normalGatingHermiteCap: {
-      value: NORMAL_GATING_HERMITE_CAP,
-      min: MIN_NORMAL_GATING_HERMITE_PARAMETER,
-      max: MAX_NORMAL_GATING_HERMITE_PARAMETER,
-      step: NORMAL_GATING_HERMITE_PARAMETER_STEP,
-      label: 'Hermite cap value',
-    },
-    normalGatePlot: normalGatePlotControl({
-      value: {
-        hermiteCap: NORMAL_GATING_HERMITE_CAP,
-        hermiteKnee: NORMAL_GATING_HERMITE_KNEE,
-      },
-      label: 'Normal gating graph',
-    }),
     blendSupportGatingEnabled: {
       value: BLEND_SUPPORT_GATING_ENABLED,
       label: 'Enable blend support gating',
@@ -104,29 +67,7 @@ export function useBlendingControls() {
     storeDebugOverlayVisible(controls.boundsVisible)
   }, [controls.boundsVisible])
 
-  useEffect(() => {
-    setControls({
-      normalGatePlot: {
-        hermiteCap: controls.normalGatingHermiteCap,
-        hermiteKnee: controls.normalGatingHermiteKnee,
-      },
-    })
-  }, [controls.normalGatingHermiteCap, controls.normalGatingHermiteKnee, setControls])
-
   return { controls, setControls }
-}
-
-function GatingPlotControl() {
-  const { value } = useInputContext<{ value: GatingPlotValue }>()
-
-  return (
-    <div className="leva-gating-plot-control">
-      <GatingPlot
-        hermiteCap={value.hermiteCap}
-        hermiteKnee={value.hermiteKnee}
-      />
-    </div>
-  )
 }
 
 function getInitialDebugOverlayVisible() {

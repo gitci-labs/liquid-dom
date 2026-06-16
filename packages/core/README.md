@@ -178,7 +178,7 @@ Default values:
 | `thickness` | `90` |
 | `displacementFactor` | `1` |
 | `displacementBlur` | `6` |
-| `normalGating` | `{ enabled: true, hermiteKnee: 0.7, hermiteCap: 0.84 }` |
+| `normalGating` | `{ enabled: true }` |
 | `ior` | `1.5` |
 | `contentIor` | `1` |
 | `contentDepth` | `0` |

@@ -447,8 +447,7 @@ describe('React layout components', () => {
         <GlassContainer
           ref={containerRef}
           normalGating={{
-            hermiteKnee: 0.72,
-            hermiteCap: 0.86,
+            enabled: true,
           }}
           blendSupportGating={false}
         >
@@ -461,8 +460,6 @@ describe('React layout components', () => {
 
     expect(containerRef.current?.normalGating).toEqual({
       enabled: true,
-      hermiteCap: 0.86,
-      hermiteKnee: 0.72,
     })
     expect(containerRef.current?.blendSupportGating).toEqual({
       enabled: false,
@@ -485,8 +482,6 @@ describe('React layout components', () => {
 
     expect(containerRef.current?.normalGating).toEqual({
       enabled: false,
-      hermiteCap: 0.84,
-      hermiteKnee: 0.7,
     })
     expect(containerRef.current?.blendSupportGating).toEqual({
       enabled: true,
@@ -499,8 +494,6 @@ describe('React layout components', () => {
           ref={containerRef}
           normalGating={{
             enabled: true,
-            hermiteKnee: 0.74,
-            hermiteCap: 0.88,
           }}
           blendSupportGating={false}
         >
@@ -513,8 +506,6 @@ describe('React layout components', () => {
 
     expect(containerRef.current?.normalGating).toEqual({
       enabled: true,
-      hermiteCap: 0.88,
-      hermiteKnee: 0.74,
     })
     expect(containerRef.current?.blendSupportGating).toEqual({
       enabled: false,

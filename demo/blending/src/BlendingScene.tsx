@@ -42,8 +42,6 @@ export function BlendingGlassScene({
             tint={{ r: 0.73, g: 0.73, b: 0.73, a: 0.45 }}
             normalGating={{
               enabled: controls.normalGatingEnabled,
-              hermiteCap: controls.normalGatingHermiteCap,
-              hermiteKnee: controls.normalGatingHermiteKnee,
             }}
             blendSupportGating={{
               enabled: controls.blendSupportGatingEnabled,

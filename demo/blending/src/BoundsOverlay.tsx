@@ -28,8 +28,6 @@ type BoundsOverlayProps = {
   blendingDistance: number
   blendSupportCellSize: number
   cornerRadius: number
-  hermiteCap: number
-  hermiteKnee: number
   hoverPoint: StagePoint | null
   normalGatingEnabled: boolean
   opacity: number
@@ -42,8 +40,6 @@ export function BoundsOverlay({
   blendingDistance,
   blendSupportCellSize,
   cornerRadius,
-  hermiteCap,
-  hermiteKnee,
   hoverPoint,
   normalGatingEnabled,
   opacity,
@@ -163,8 +159,6 @@ export function BoundsOverlay({
         blendingDistance,
         cornerRadius,
         enabled: normalGatingEnabled,
-        hermiteCap,
-        hermiteKnee,
         submersionEntriesByShape,
         submersionGridsByShape,
         blendSupportGatingEnabled,
@@ -176,8 +170,6 @@ export function BoundsOverlay({
     blendingDistance,
     blendSupportCellSize,
     cornerRadius,
-    hermiteCap,
-    hermiteKnee,
     hoverPoint,
     normalGatingEnabled,
     shapes,
@@ -281,8 +273,6 @@ type NormalGateVisualizationOptions = {
   blendingDistance: number
   cornerRadius: number
   enabled: boolean
-  hermiteCap: number
-  hermiteKnee: number
   submersionEntriesByShape: Map<ShapeId, ShapeBoundsEntry>
   submersionGridsByShape: Map<ShapeId, sdfUtils.ShapeSubmersionGridValues>
   blendSupportGatingEnabled: boolean
@@ -509,8 +499,6 @@ function normalGateForSamples(
     right.normal,
     {
       enabled: options.enabled,
-      hermiteCap: options.hermiteCap,
-      hermiteKnee: options.hermiteKnee,
     },
   )
   const baseBlendDistance = options.blendingDistance * normalGate.gate

@@ -208,22 +208,9 @@ fn hardUnion(left: SdfSample, right: SdfSample) -> SdfSample {
   return right;
 }
 
-fn hermiteCapGate(value: f32, kneeInput: f32, capInput: f32) -> f32 {
+fn normalAngleGate(value: f32) -> f32 {
   let x = clamp(value, 0.0, 1.0);
-  let cap = clamp(capInput, 0.0, 1.0);
-  let knee = min(clamp(kneeInput, 0.0, 1.0), cap);
-  if (x <= knee) {
-    return x;
-  }
-
-  let span = max(1.0 - knee, SDF_EPSILON);
-  let u = clamp((x - knee) / span, 0.0, 1.0);
-  let u2 = u * u;
-  let u3 = u2 * u;
-  let h00 = 2.0 * u3 - 3.0 * u2 + 1.0;
-  let h10 = u3 - 2.0 * u2 + u;
-  let h01 = -2.0 * u3 + 3.0 * u2;
-  return clamp(h00 * knee + h10 * span + h01 * cap, 0.0, 1.0);
+  return clamp(x + x * x - x * x * x, 0.0, 1.0);
 }
 
 fn shapeLocalPos(shape: ShapeData, pos: vec2f) -> vec2f {
@@ -347,7 +334,7 @@ fn normalGateForSamples(left: SdfSample, right: SdfSample) -> f32 {
   var normalGate = 1.0;
   if (globals.sdf.x > 0.5) {
     let normalizedAngle = acos(normalAlignment) * SDF_NORMAL_ANGLE_INV_PI;
-    normalGate = hermiteCapGate(normalizedAngle, globals.sdfParams2.x, globals.sdfParams2.y);
+    normalGate = normalAngleGate(normalizedAngle);
   }
   return normalGate;
 }

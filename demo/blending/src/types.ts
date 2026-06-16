@@ -21,21 +21,12 @@ export type BlendingControls = {
   boundsVisible: boolean
   cornerRadius: number
   normalGatingEnabled: boolean
-  normalGatingHermiteCap: number
-  normalGatingHermiteKnee: number
   blendSupportGatingEnabled: boolean
   blendSupportCellSize: number
   smoothUnionAcceleration: number
 }
 
-export type GatingPlotValue = {
-  hermiteCap: number
-  hermiteKnee: number
-}
-
-export type BlendingPanelValues = BlendingControls & {
-  normalGatePlot: GatingPlotValue
-}
+export type BlendingPanelValues = BlendingControls
 
 export type InteractionState =
   | {
