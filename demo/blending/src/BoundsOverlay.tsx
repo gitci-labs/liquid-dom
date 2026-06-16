@@ -29,6 +29,7 @@ type BoundsOverlayProps = {
   blendSupportCellSize: number
   cornerRadius: number
   hoverPoint: StagePoint | null
+  normalGateDetailsVisible: boolean
   normalGatingEnabled: boolean
   opacity: number
   shapes: ShapeState[]
@@ -41,6 +42,7 @@ export function BoundsOverlay({
   blendSupportCellSize,
   cornerRadius,
   hoverPoint,
+  normalGateDetailsVisible,
   normalGatingEnabled,
   opacity,
   shapes,
@@ -159,6 +161,7 @@ export function BoundsOverlay({
         blendingDistance,
         cornerRadius,
         enabled: normalGatingEnabled,
+        normalGateDetailsVisible,
         submersionEntriesByShape,
         submersionGridsByShape,
         blendSupportGatingEnabled,
@@ -171,6 +174,7 @@ export function BoundsOverlay({
     blendSupportCellSize,
     cornerRadius,
     hoverPoint,
+    normalGateDetailsVisible,
     normalGatingEnabled,
     shapes,
     stageSize,
@@ -273,6 +277,7 @@ type NormalGateVisualizationOptions = {
   blendingDistance: number
   cornerRadius: number
   enabled: boolean
+  normalGateDetailsVisible: boolean
   submersionEntriesByShape: Map<ShapeId, ShapeBoundsEntry>
   submersionGridsByShape: Map<ShapeId, sdfUtils.ShapeSubmersionGridValues>
   blendSupportGatingEnabled: boolean
@@ -301,6 +306,10 @@ function drawNormalGateVisualization(
 
   const primary = samples[0]
   const secondary = samples[1]
+  if (!options.normalGateDetailsVisible) {
+    return
+  }
+
   drawGaussianSubmersionInfluences(context, point, samples.slice(0, 2), options)
   drawHoverMarker(context, point)
   drawNormalVector(context, point, primary.normal, colorWithAlpha(shapeColor(primary.shape.id), 0.98), secondary ? -4 : 0)

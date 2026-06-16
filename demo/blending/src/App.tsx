@@ -27,6 +27,7 @@ export default function App() {
   const [shapes, setShapes] = useState(INITIAL_SHAPES)
   const [stageSize, setStageSize] = useState<StageSize>({ width: 0, height: 0 })
   const [hoverPoint, setHoverPoint] = useState<StagePoint | null>(null)
+  const [interactionActive, setInteractionActive] = useState(false)
   const requestSceneRender = useCallback(() => {
     requestRenderRef.current()
   }, [])
@@ -45,6 +46,7 @@ export default function App() {
     updateInteraction,
   } = useStageInteraction({
     boundsVisible: controls.boundsVisible,
+    setInteractionActive,
     setHoverPoint,
     setShapes,
     stageRef,
@@ -97,7 +99,11 @@ export default function App() {
       <div className="blending-demo">
         <section
           ref={stageRef}
-          className={`blending-stage ${controls.boundsVisible ? 'visualizing' : ''}`}
+          className={[
+            'blending-stage',
+            controls.boundsVisible ? 'visualizing' : '',
+            interactionActive ? 'interacting' : '',
+          ].filter(Boolean).join(' ')}
           onPointerMove={updateHoverPoint}
           onPointerLeave={clearHoverPoint}
         >
@@ -139,6 +145,7 @@ export default function App() {
               blendingDistance={controls.blendingDistance}
               cornerRadius={controls.cornerRadius}
               hoverPoint={hoverPoint}
+              normalGateDetailsVisible={!interactionActive}
               normalGatingEnabled={controls.normalGatingEnabled}
               opacity={SAMPLE_VISUALIZATION_OPACITY}
               shapes={shapes}

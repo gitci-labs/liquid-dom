@@ -26,6 +26,7 @@ import type {
 
 type StageInteractionOptions = {
   boundsVisible: boolean
+  setInteractionActive: Dispatch<SetStateAction<boolean>>
   setHoverPoint: Dispatch<SetStateAction<StagePoint | null>>
   setShapes: Dispatch<SetStateAction<ShapeState[]>>
   stageRef: RefObject<HTMLElement | null>
@@ -33,6 +34,7 @@ type StageInteractionOptions = {
 
 export function useStageInteraction({
   boundsVisible,
+  setInteractionActive,
   setHoverPoint,
   setShapes,
   stageRef,
@@ -74,6 +76,10 @@ export function useStageInteraction({
     event.currentTarget.setPointerCapture(event.pointerId)
 
     const point = getStagePoint(event)
+    setInteractionActive(true)
+    if (boundsVisible) {
+      setHoverPoint(point)
+    }
     if (isNearShapeCorner(point, shape)) {
       interactionRef.current = {
         mode: 'rotate',
@@ -115,6 +121,9 @@ export function useStageInteraction({
 
     event.preventDefault()
     const point = getStagePoint(event)
+    if (boundsVisible) {
+      setHoverPoint(point)
+    }
     if (interaction.mode === 'drag') {
       updateShape(interaction.shapeId, {
         x: interaction.startShape.x + point.x - interaction.startPoint.x,
@@ -141,6 +150,7 @@ export function useStageInteraction({
     }
 
     interactionRef.current = null
+    setInteractionActive(false)
   }
 
   return {
