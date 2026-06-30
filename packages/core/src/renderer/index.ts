@@ -36,6 +36,8 @@ type RendererInit = {
   scene?: Scene
   /** Maximum device pixel ratio used for internal render targets. Defaults to `2`. */
   maxDpr?: number
+  /** Whether WebGPU initialization failures should be logged to console.error. Defaults to true. */
+  logInitializationErrors?: boolean
 }
 
 /**
@@ -50,6 +52,8 @@ export class Renderer {
   readonly scene: Scene
   /** Canvas element that presents the rendered output. */
   readonly canvas: HTMLCanvasElement
+  /** Resolves when WebGPU resources are ready, or rejects with the initialization error. */
+  readonly ready: Promise<void>
   /** Maximum device pixel ratio used for internal render targets. */
   maxDpr: number
 
@@ -65,6 +69,7 @@ export class Renderer {
   private sceneContentSyncQueued = false
   private currentDpr = 1
   private resizeObserver: ResizeObserver | null = null
+  private initializationErrorLoggingEnabled = true
 
   private device: GPUDevice | null = null
   private context: GPUCanvasContext | null = null
@@ -93,6 +98,7 @@ export class Renderer {
   constructor(options: RendererInit = {}) {
     this.scene = options.scene ?? new Scene()
     this.maxDpr = options.maxDpr ?? 2
+    this.initializationErrorLoggingEnabled = options.logInitializationErrors ?? true
     this.targetCanvas = document.createElement('canvas')
     this.targetCanvas.setAttribute('layoutsubtree', 'true')
     this.targetCanvas.style.display = 'block'
@@ -118,10 +124,24 @@ export class Renderer {
     this.unsubscribeSceneMutations = this.scene._subscribe(this.handleSceneMutation)
 
     this.canvas = this.targetCanvas
-    void this.initialize().catch((error) => {
+    this.ready = this.initialize().catch((error) => {
       this.initError = error
-      console.error(error)
+      if (this.initializationErrorLoggingEnabled) {
+        console.error(error)
+      }
+      throw error
     })
+    void this.ready.catch(() => {})
+  }
+
+  /** Whether WebGPU initialization has completed and frames can be drawn. */
+  get isReady() {
+    return this.initialized
+  }
+
+  /** Initialization failure, if WebGPU setup failed. */
+  get initializationError() {
+    return this.initError
   }
 
   /** Enables or disables cached backdrop metrics for a container. */
