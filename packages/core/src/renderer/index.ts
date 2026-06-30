@@ -144,6 +144,11 @@ export class Renderer {
     return this.initError
   }
 
+  /** Re-reads CSS bounds and synchronizes the WebGPU canvas/backing texture size. */
+  resize() {
+    this.syncCanvasSize()
+  }
+
   /** Enables or disables cached backdrop metrics for a container. */
   setBackdropMetricsTracking(container: Container, enabled: boolean) {
     this.core?.setBackdropMetricsTracking(container, enabled)

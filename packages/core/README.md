@@ -229,10 +229,11 @@ const renderer = new Renderer({
 })
 
 renderer.render()
+renderer.resize()
 renderer.destroy()
 ```
 
-`Renderer` creates a `<canvas layoutsubtree="true">`. Append `renderer.canvas` to the page, size it with CSS, and call `render()` from your own frame loop. Use `destroy()` to release GPU and DOM resources. Constructor options are `scene?: Scene` and `maxDpr?: number`; `maxDpr` defaults to `2` and is also mutable.
+`Renderer` creates a `<canvas layoutsubtree="true">`. Append `renderer.canvas` to the page, size it with CSS, and call `render()` from your own frame loop. Call `resize()` when the canvas CSS bounds may have changed outside observer timing, such as deterministic capture seeks, and use `destroy()` to release GPU and DOM resources. Constructor options are `scene?: Scene`, `maxDpr?: number`, and `logInitializationErrors?: boolean`; `maxDpr` defaults to `2` and is also mutable.
 
 Backdrop metrics can be enabled per container:
 

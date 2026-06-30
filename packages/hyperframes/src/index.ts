@@ -8,6 +8,7 @@ export type HyperFramesTimelineLike = {
 export type LiquidRendererLike = {
   canvas: HTMLElement & Partial<HTMLCanvasElement>
   ready?: Promise<unknown>
+  resize?: () => void
   render: () => void
   destroy?: () => void
 }
@@ -174,6 +175,7 @@ export class HyperFramesLiquidController {
       renderer: this.renderer,
       time,
     })
+    this.renderer.resize?.()
     this.renderer.render()
   }
 

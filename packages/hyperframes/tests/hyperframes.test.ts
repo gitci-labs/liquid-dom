@@ -29,8 +29,15 @@ function fakeRenderer(ready: Promise<unknown> = Promise.resolve()) {
     canvas: fakeElement() as unknown as LiquidRendererLike['canvas'],
     destroy: vi.fn(),
     ready,
+    resize: vi.fn(),
     render: vi.fn(),
   }
+}
+
+function expectResizeBeforeRender(renderer: ReturnType<typeof fakeRenderer>, index = 0) {
+  expect(renderer.resize.mock.invocationCallOrder[index]).toBeLessThan(
+    renderer.render.mock.invocationCallOrder[index],
+  )
 }
 
 function fakeTimeline(time = 0) {
@@ -71,7 +78,9 @@ describe('HyperFramesLiquidController', () => {
 
     expect(onFrame).toHaveBeenCalledTimes(1)
     expect(onFrame.mock.calls[0]?.[0].time).toBe(2)
+    expect(renderer.resize).toHaveBeenCalledTimes(1)
     expect(renderer.render).toHaveBeenCalledTimes(1)
+    expectResizeBeforeRender(renderer)
   })
 
   it('renders from GSAP-style timeline callbacks without replacing existing callbacks', async () => {
@@ -88,7 +97,9 @@ describe('HyperFramesLiquidController', () => {
 
     expect(existing).toHaveBeenCalledTimes(1)
     expect(onFrame.mock.calls.at(-1)?.[0].time).toBe(3.5)
+    expect(renderer.resize).toHaveBeenCalledTimes(2)
     expect(renderer.render).toHaveBeenCalledTimes(2)
+    expectResizeBeforeRender(renderer, 1)
   })
 
   it('restores timeline callbacks and destroys the renderer', async () => {
@@ -129,7 +140,9 @@ describe('HyperFramesLiquidController', () => {
     expect(renderer.destroy).toHaveBeenCalledTimes(1)
     expect(renderer.canvas.remove).toHaveBeenCalledTimes(1)
     expect(onFrame.mock.calls.at(-1)?.[0]).toMatchObject({ mode: 'fallback', time: 4 })
+    expect(fallback.resize).toHaveBeenCalledTimes(1)
     expect(fallback.render).toHaveBeenCalledTimes(1)
+    expectResizeBeforeRender(fallback)
   })
 
   it('rejects initialization errors when no fallback renderer is provided', async () => {
