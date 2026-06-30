@@ -106,6 +106,41 @@ describe('HyperFramesLiquidController', () => {
     expect(renderer.destroy).toHaveBeenCalledTimes(1)
     expect(renderer.canvas.remove).toHaveBeenCalledTimes(1)
   })
+
+  it('falls back when WebGPU initialization fails after support detection', async () => {
+    const initError = new Error('adapter unavailable')
+    const renderer = fakeRenderer(Promise.reject(initError))
+    const fallback = fakeRenderer()
+    const onFallback = vi.fn()
+    const onFrame = vi.fn()
+    const controller = new HyperFramesLiquidController({
+      renderer,
+      fallbackRenderer: () => fallback,
+      onFallback,
+      onFrame,
+    })
+
+    controller.renderAt(4)
+    await controller.ready
+
+    expect(controller.mode).toBe('fallback')
+    expect(controller.renderer).toBe(fallback)
+    expect(onFallback).toHaveBeenCalledWith(initError)
+    expect(renderer.destroy).toHaveBeenCalledTimes(1)
+    expect(renderer.canvas.remove).toHaveBeenCalledTimes(1)
+    expect(onFrame.mock.calls.at(-1)?.[0]).toMatchObject({ mode: 'fallback', time: 4 })
+    expect(fallback.render).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects initialization errors when no fallback renderer is provided', async () => {
+    const initError = new Error('webgpu unavailable')
+    const renderer = fakeRenderer(Promise.reject(initError))
+    const onError = vi.fn()
+    const controller = new HyperFramesLiquidController({ renderer, onError })
+
+    await expect(controller.ready).rejects.toThrow('webgpu unavailable')
+    expect(onError).toHaveBeenCalledWith(initError)
+  })
 })
 
 describe('hasHyperFramesWebGpuSupport', () => {
